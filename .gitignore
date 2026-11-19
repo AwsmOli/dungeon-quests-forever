@@ -1,0 +1,5 @@
+# Build output for the claude.ai artifact version
+build/
+__pycache__/
+# Original single-dungeon BRD page (superseded by the planner)
+brd-route.html

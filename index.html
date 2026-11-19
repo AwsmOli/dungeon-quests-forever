@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Plan the fastest pickup route for every dungeon quest in WoW Forever, for your party, faction and teleports.">
+<style>html{color-scheme:light}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Forever Quest Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: setup panel, dungeon strip, then the plan for the chosen dungeon (players side by side, then the group route), then reference lists. */
+:root {
+  --bg: #f1f2f4; --surface: #ffffff; --sunk: #e8eaee; --fg: #1b1e23; --muted: #5a6170; --line: #d7dae0;
+  --ember: #c2501d; --ember-soft: #fbe8dd;
+  --alli: #2b59a0; --alli-soft: #e2eaf7; --horde: #a2302a; --horde-soft: #f6e1df;
+  --ok: #2b7745; --ok-soft: #dff1e5; --warn: #8a6100; --warn-soft: #faefd2;
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161a; --surface: #1c1f24; --sunk: #24282e; --fg: #e7e9ed; --muted: #9aa1ac; --line: #30343b;
+    --ember: #f08a52; --ember-soft: #3a2418; --alli: #84aae6; --alli-soft: #1d2a3f; --horde: #ec8b84; --horde-soft: #3a1f1d;
+    --ok: #7ccf95; --ok-soft: #1a3223; --warn: #e5ba59; --warn-soft: #352b14; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14161a; --surface: #1c1f24; --sunk: #24282e; --fg: #e7e9ed; --muted: #9aa1ac; --line: #30343b;
+  --ember: #f08a52; --ember-soft: #3a2418; --alli: #84aae6; --alli-soft: #1d2a3f; --horde: #ec8b84; --horde-soft: #3a1f1d;
+  --ok: #7ccf95; --ok-soft: #1a3223; --warn: #e5ba59; --warn-soft: #352b14; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 64px;
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; line-height: 1.2; text-wrap: balance; }
+h1 { font-size: 2rem; letter-spacing: -0.01em; }
+h2 { font-size: 1.4rem; }
+h3 { font-size: 1.02rem; }
+p { margin: 0; max-width: 72ch; }
+.eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ember); font-weight: 600; }
+.muted { color: var(--muted); }
+.small { font-size: 0.88rem; }
+.coord, .mono { font-family: var(--font-mono); font-size: 0.82em; }
+header { display: flex; flex-direction: column; gap: 8px; }
+:root { --fac: var(--alli); --fac-soft: var(--alli-soft); }
+body.horde { --fac: var(--horde); --fac-soft: var(--horde-soft); }
+
+/* setup */
+.setup { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px 28px; }
+.field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.label { font: 600 0.72rem var(--font-body); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; align-self: flex-start; }
+.seg button { font: 600 0.92rem var(--font-display); padding: 8px 18px; border: 0; background: var(--surface); color: var(--muted); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--fac); color: var(--surface); }
+.party { display: flex; flex-direction: column; gap: 8px; }
+.prow { display: grid; grid-template-columns: 26px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 30px; gap: 8px; align-items: center; }
+.pnum { font: 700 0.85rem var(--font-display); width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--fac-soft); color: var(--fac); }
+input[type="text"], select { font: 0.9rem var(--font-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--fg); width: 100%; min-width: 0; }
+.iconbtn { border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 7px; height: 32px; cursor: pointer; font-size: 1rem; }
+.btn { font: 600 0.88rem var(--font-body); border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 7px; padding: 7px 12px; cursor: pointer; align-self: flex-start; }
+.btn:disabled, .iconbtn:disabled { opacity: 0.4; cursor: default; }
+.check { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start; font-size: 0.9rem; cursor: pointer; }
+.check input { margin: 3px 0 0; accent-color: var(--fac); }
+button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--ember); outline-offset: 1px; }
+
+/* dungeon strip */
+.strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.chip { flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 12px; cursor: pointer; color: var(--fg); min-width: 92px; }
+.chip b { font: 700 0.95rem var(--font-display); }
+.chip span { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.chip[aria-current="true"] { border-color: var(--fac); box-shadow: inset 0 0 0 1px var(--fac); }
+.chip .new { color: var(--ember); font-weight: 600; }
+
+/* dungeon head */
+.dhead { display: flex; flex-direction: column; gap: 10px; }
+.levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.lvl { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.lvl .n { font: 700 1.9rem var(--font-display); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.lvl.key { border-color: var(--fac); }
+.lvl.key .n { color: var(--fac); }
+.lvl .t { font-size: 0.82rem; color: var(--muted); }
+
+.summary { background: var(--fac-soft); border-radius: 10px; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+.summary b { font-family: var(--font-display); font-size: 1.05rem; }
+
+.players { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.pcard { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.pcard h3 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.tag { font: 600 0.68rem var(--font-body); text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 4px; white-space: nowrap; }
+.tag.cls { background: var(--sunk); color: var(--muted); }
+.tag.new { background: var(--ember-soft); color: var(--ember); }
+.tag.ch { background: var(--warn-soft); color: var(--warn); }
+.tag.ok { background: var(--ok-soft); color: var(--ok); }
+.tag.no { background: var(--sunk); color: var(--muted); }
+
+ol.stops { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; counter-reset: s; }
+ol.stops > li { counter-increment: s; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; position: relative; padding-bottom: 14px; }
+ol.stops > li::before { content: counter(s); width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font: 700 0.82rem var(--font-display); border: 2px solid var(--fac); color: var(--fac); background: var(--surface); z-index: 1; }
+ol.stops > li:not(:last-child)::after { content: ""; position: absolute; left: 12px; top: 28px; bottom: 0; width: 2px; background: var(--line); }
+ol.stops > li.end::before { content: "\2192"; border-style: dashed; }
+.stop { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-top: 2px; }
+.where { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.where b { font-family: var(--font-display); }
+.via { font: 600 0.7rem var(--font-body); text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 7px; border-radius: 4px; background: var(--fac-soft); color: var(--fac); white-space: nowrap; }
+.via.magic { background: var(--ember-soft); color: var(--ember); }
+.acts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 0.9rem; }
+.acts li { min-width: 0; }
+.verb { font-weight: 600; }
+.shares { background: var(--surface); border: 1px dashed var(--fac); border-radius: 10px; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
+.shares ul { margin: 0; padding-left: 18px; }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.box ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; font-size: 0.9rem; }
+
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 0.86rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 0.7rem var(--font-body); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); background: var(--surface); }
+td.num { font-variant-numeric: tabular-nums; font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+tr.dead td { color: var(--muted); }
+section { display: flex; flex-direction: column; gap: 12px; }
+.notes { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+a { color: var(--ember); overflow-wrap: anywhere; }
+.foot { font-size: 0.82rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+
+@media (max-width: 760px) {
+  .setup { grid-template-columns: 1fr; }
+  .prow { grid-template-columns: 24px minmax(0, 1fr) minmax(0, 1fr) 30px; }
+  .prow .eng { grid-column: 2 / 4; }
+  h1 { font-size: 1.6rem; }
+}
+@media (prefers-reduced-motion: no-preference) { .chip, .seg button { transition: background-color .15s, box-shadow .15s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="eyebrow">WoW Forever · Dungeon quests</span>
+    <h1>Forever Quest Planner</h1>
+    <p class="muted">Pick your faction, your party and who can teleport. The planner works out the quickest way to grab every quest before the run. When you split up, it says who goes where and who shares what when you meet.</p>
+  </header>
+
+  <div class="setup" id="setup">
+    <div class="field">
+      <span class="label">Party</span>
+      <div class="party" id="party"></div>
+      <button type="button" class="btn" id="addp">Add player</button>
+    </div>
+    <div class="field" style="gap:16px">
+      <div class="field">
+        <span class="label">Faction</span>
+        <div class="seg" role="group" aria-label="Faction">
+          <button type="button" id="f-A" data-f="A">Alliance</button>
+          <button type="button" id="f-H" data-f="H">Horde</button>
+        </div>
+      </div>
+      <div class="field">
+        <label class="label" for="start">Everyone starts in</label>
+        <select id="start"></select>
+      </div>
+      <label class="check" for="opt"><input type="checkbox" id="opt"><span>Include optional quests: breadcrumbs, profession and class quests, and quests that need a long chain first</span></label>
+    </div>
+  </div>
+
+  <nav class="strip" id="strip" aria-label="Dungeons"></nav>
+
+  <div id="view" class="wrap" style="gap:24px"></div>
+
+  <div class="foot">
+    <p>Travel times are rough estimates from a simple map model (flight paths, boats and zeppelins, teleports, one hearthstone per route). They're for comparing plans, not for a stopwatch.</p>
+    <p>Quest data comes from Forever trackers that read the live game data (build 1.60.1), with Classic details filled in where the trackers are blank. NPC positions are mostly Classic's. Check anything marked "unclear" in game.</p>
+  </div>
+</div>
+
+<script>/* Forever dungeon quest planner engine. Pure functions; browser (window.Planner) or Node (module.exports). */
+(function (root) {
+  var FLY_SPEED = 6;      // map units per minute on a flight path
+  var RIDE_SPEED = 2.6;   // map units per minute on a ground mount
+  var FP_OVERHEAD = 1;    // flight master, landing
+  var CROSS = 10;         // boat or zeppelin wait plus crossing
+  var CAST = 0.5;         // teleport / portal cast
+  var SUMMON = 1.5;       // one Ritual of Summoning
+  var ACT = 0.5;          // talking to an NPC
+  var CITIES = { A: ["SW", "IF", "DARN"], H: ["ORG", "UC", "TB"] };
+  var PORT_PAIRS = { A: [["SW", "AUBERDINE"], ["MENETHIL", "THERAMORE"], ["MENETHIL", "AUBERDINE"]], H: [["UC", "ORG"], ["GROMGOL", "ORG"]] };
+
+  function dist(a, b) { var dx = a.x - b.x, dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy); }
+  function rideOf(h, f) { var r = h.ride && h.ride[f]; return r == null ? 4 : r; }
+  function flySame(H, a, b, f) { return FP_OVERHEAD + rideOf(H[a], f) + dist(H[a], H[b]) / FLY_SPEED + rideOf(H[b], f); }
+  function rideSame(H, a, b) { return 0.3 + dist(H[a], H[b]) / RIDE_SPEED; }
+
+  var memo = {};
+  function baseTravel(H, a, b, f) {
+    var key = a + ">" + b + ">" + f;
+    if (memo[key]) return memo[key];
+    var r;
+    if (a === b) r = { min: 0, via: "Here" };
+    else if (H[a].cont === H[b].cont) {
+      var fly = flySame(H, a, b, f), ride = rideSame(H, a, b);
+      r = ride <= fly ? { min: ride, via: "Ride" } : { min: fly, via: "Fly" };
+    } else {
+      var best = null;
+      PORT_PAIRS[f].forEach(function (p) {
+        if (!H[p[0]] || !H[p[1]]) return;
+        var pa = H[a].cont === H[p[0]].cont ? p[0] : p[1], pb = pa === p[0] ? p[1] : p[0];
+        var t = (a === pa ? 0 : baseTravel(H, a, pa, f).min) + CROSS + (pb === b ? 0 : baseTravel(H, pb, b, f).min);
+        if (best == null || t < best) best = t;
+      });
+      r = { min: best == null ? 30 : best, via: f === "H" ? "Fly + zeppelin" : "Fly + boat" };
+    }
+    memo[key] = r;
+    return r;
+  }
+
+  // Cheapest way for someone with `abil` to get from `from` to `to`. extra = [{via,min}] (hearth etc.)
+  function travel(H, from, to, f, abil, extra) {
+    if (from === to) return { min: 0, via: "Here" };
+    var opts = [baseTravel(H, from, to, f)];
+    CITIES[f].forEach(function (c) {
+      if (!H[c]) return;
+      var leg = c === to ? 0 : baseTravel(H, c, to, f).min;
+      if (abil.mage) opts.push({ min: CAST + leg, via: "Teleport: " + H[c].name });
+      else if (abil.portalFromMage) opts.push({ min: CAST + leg, via: "Mage portal: " + H[c].name });
+    });
+    if (abil.gnomish && H.GADGETZAN) opts.push({ min: 1 + (to === "GADGETZAN" ? 0 : baseTravel(H, "GADGETZAN", to, f).min), via: "Ultrasafe Transporter: Gadgetzan" });
+    if (abil.goblin && H.EVERLOOK) opts.push({ min: 1 + (to === "EVERLOOK" ? 0 : baseTravel(H, "EVERLOOK", to, f).min), via: "Dimensional Ripper: Everlook" });
+    if (abil.druid && H.MOONGLADE) opts.push({ min: CAST + (to === "MOONGLADE" ? 0 : baseTravel(H, "MOONGLADE", to, f).min), via: "Teleport: Moonglade" });
+    (extra || []).forEach(function (o) { opts.push(o); });
+    opts.sort(function (x, y) { return x.min - y.min; });
+    return opts[0];
+  }
+
+  // ---------- quest helpers ----------
+  function isLive(q) { return !q.status || q.status === "live"; }
+  function forFaction(q, f) { return q.f === f || q.f === "B"; }
+  function isOptional(q) { return q.cat === "optional" || q.cat === "class"; }
+  function pathOf(q, f) { if (!q.path) return null; return Array.isArray(q.path) ? q.path : (q.path[f] || null); }
+  function classOk(q, classes) {
+    if (q.cat !== "class") return true;
+    if (!classes || !q.cls) return false;
+    if (q.cls === "All") return true;
+    return q.cls.toLowerCase().split("/").some(function (c) { return classes.indexOf(c.trim()) >= 0; });
+  }
+  function routable(q, f, incl, classes) {
+    return forFaction(q, f) && isLive(q) && !!pathOf(q, f) && (incl || (!isOptional(q) && !q.optRoute)) && classOk(q, classes);
+  }
+
+  function levelInfo(d, f) {
+    function mx(filter) {
+      var best = null, who = null;
+      d.quests.forEach(function (q) {
+        if (!forFaction(q, f) || !isLive(q) || q.req == null || !filter(q)) return;
+        if (best == null || q.req > best) { best = q.req; who = q.n; }
+      });
+      return { lvl: best, q: who };
+    }
+    return {
+      firstRun: mx(function (q) { return !isOptional(q) && q.cat !== "followup" && !q.optRoute; }),
+      full: mx(function (q) { return !isOptional(q); }),
+      cls: mx(function (q) { return q.cat === "class"; }),
+      optional: mx(function (q) { return q.cat === "optional"; })
+    };
+  }
+
+  // Build task list: one task per routable quest; `after` turns into indexes.
+  function buildTasks(d, f, incl, classes) {
+    var tasks = [];
+    var byName = {};
+    d.quests.forEach(function (q) {
+      if (!routable(q, f, incl, classes)) return;
+      var key = q.n + "|" + q.f;
+      var t = { q: q, steps: pathOf(q, f), after: [] };
+      byName[q.n] = byName[q.n] || [];
+      byName[q.n].push(tasks.length);
+      tasks.push(t);
+    });
+    tasks.forEach(function (t) {
+      (t.q.after || []).forEach(function (n) { (byName[n] || []).forEach(function (i) { t.after.push(i); }); });
+    });
+    return tasks;
+  }
+
+  // Greedy tour through tasks, honoring step order and `after`, trying each first hub.
+  function tour(H, f, start, tasks, abilFn, endHub) {
+    if (!tasks.length) {
+      var fin0 = endHub ? travel(H, start, endHub, f, abilFn(0), null) : { min: 0, via: "Here" };
+      return { visits: [], time: fin0.min, final: fin0, end: endHub || start };
+    }
+    function readyIdx(ptr) {
+      var out = [];
+      tasks.forEach(function (t, i) {
+        if (ptr[i] >= t.steps.length) return;
+        if (t.after.every(function (a) { return ptr[a] >= tasks[a].steps.length; })) out.push(i);
+      });
+      return out;
+    }
+    function run(firstHub) {
+      var ptr = tasks.map(function () { return 0; });
+      var cur = start, t = 0, visits = [], n = 0, guard = 0, hearthUsed = false;
+      while (guard++ < 200) {
+        var ready = readyIdx(ptr);
+        if (!ready.length) break;
+        var abil = abilFn(n);
+        var hub = null, best = null, bestTr = null;
+        ready.forEach(function (i) {
+          var s = tasks[i].steps[ptr[i]];
+          var tr = travel(H, cur, s.hub, f, abil, hearthUsed ? null : s.opts);
+          var score = tr.min + i * 1e-4;
+          if (n === 0 && firstHub) score = s.hub === firstHub ? -1 : score + 1e6;
+          if (best == null || score < best) { best = score; hub = s.hub; bestTr = tr; }
+        });
+        if (/^Hearth/.test(bestTr.via)) hearthUsed = true;
+        var visit = { hub: hub, travel: bestTr, acts: [], work: 0 };
+        var moved = true;
+        while (moved) {
+          moved = false;
+          readyIdx(ptr).forEach(function (i) {
+            var s = tasks[i].steps[ptr[i]];
+            if (s.hub !== hub) return;
+            visit.acts.push({ q: tasks[i].q.n, a: s.a, t: s.t || "", share: tasks[i].q.share, cls: tasks[i].q.cat === "class" ? tasks[i].q.cls : null });
+            visit.work += ACT + (s.work || 0);
+            ptr[i]++; moved = true;
+          });
+        }
+        t += bestTr.min + visit.work; cur = hub; visits.push(visit); n++;
+      }
+      var fin = endHub ? travel(H, cur, endHub, f, abilFn(n), null) : { min: 0, via: "Here" };
+      return { visits: visits, time: t + fin.min, final: fin, end: endHub || cur };
+    }
+    var firsts = {};
+    readyIdx(tasks.map(function () { return 0; })).forEach(function (i) { firsts[tasks[i].steps[0].hub] = true; });
+    var best = null;
+    Object.keys(firsts).forEach(function (h) {
+      var r = run(h);
+      if (!best || r.time < best.time) best = r;
+    });
+    return best;
+  }
+
+  // players: [{name, cls: 'mage'|'warlock'|'druid'|'other', eng: 'none'|'gnomish'|'goblin'}]
+  function plan(H, d, opt) {
+    var f = opt.faction, players = opt.players, start = opt.start, N = players.length;
+    var classes = players.map(function (p) { return p.cls; });
+    var tasks = buildTasks(d, f, opt.includeOptional, classes);
+    var anyMage = players.some(function (p) { return p.cls === "mage"; });
+    var warlockIdx = -1;
+    players.forEach(function (p, i) { if (warlockIdx < 0 && p.cls === "warlock") warlockIdx = i; });
+    var groupAbil = { mage: anyMage };
+    if (N === 1) {
+      var p0 = players[0];
+      groupAbil = { mage: p0.cls === "mage", druid: p0.cls === "druid", gnomish: p0.eng === "gnomish", goblin: p0.eng === "goblin" };
+    }
+    function abilOf(p, first) {
+      return { mage: p.cls === "mage", druid: p.cls === "druid", gnomish: p.eng === "gnomish", goblin: p.eng === "goblin", portalFromMage: first && anyMage && p.cls !== "mage" };
+    }
+    var dependedOn = {};
+    tasks.forEach(function (t) { t.after.forEach(function (a) { dependedOn[a] = true; }); });
+
+    // Everyone together.
+    var all = tour(H, f, start, tasks, function () { return groupAbil; }, d.entrance);
+    var together = { mode: "together", group: all, total: all.time, meet: all.visits.length ? all.visits[0].hub : d.entrance };
+    if (N === 1) return finish(together, null);
+
+    // Pickups one person can grab and share: single "take" of a shareable quest with no prerequisite.
+    var cand = [], rest = [];
+    tasks.forEach(function (t, i) {
+      var single = t.steps.length === 1 && t.steps[0].a === "take" && !t.after.length && !dependedOn[i];
+      var ok = single && (t.q.cat === "class" || (t.q.share === true && !t.q.pre));
+      (ok ? cand : rest).push(t);
+    });
+    function reindex(list) {
+      // `after` only points inside `rest`; candidates have none and nobody depends on them.
+      var map = {}; list.forEach(function (t, i) { map[tasks.indexOf(t)] = i; });
+      return list.map(function (t) { return { q: t.q, steps: t.steps, after: t.after.map(function (a) { return map[a]; }).filter(function (x) { return x != null; }) }; });
+    }
+    var restT = reindex(rest);
+    var grp = tour(H, f, start, restT, function () { return groupAbil; }, d.entrance);
+    var groupHubs = {}; grp.visits.forEach(function (v) { groupHubs[v.hub] = true; });
+    if (!rest.length) groupHubs = {};
+    var units = {};
+    var tagAlong = [];
+    cand.forEach(function (t) {
+      if (groupHubs[t.steps[0].hub]) { tagAlong.push(t); return; }
+      var key = t.steps[0].hub + (t.q.cat === "class" ? "|" + t.q.cls : "");
+      (units[key] = units[key] || []).push(t);
+    });
+    if (tagAlong.length) { restT = reindex(rest.concat(tagAlong)); grp = tour(H, f, start, restT, function () { return groupAbil; }, d.entrance); }
+    var unitList = Object.keys(units).map(function (k) {
+      var ts = units[k], allowed = null;
+      ts.forEach(function (t) {
+        if (t.q.cat !== "class") return;
+        var ok = players.map(function (p, i) { return classOk(t.q, [p.cls]) ? i : -1; }).filter(function (i) { return i >= 0; });
+        allowed = allowed ? allowed.filter(function (i) { return ok.indexOf(i) >= 0; }) : ok;
+      });
+      return { hub: ts[0].steps[0].hub, tasks: ts, allowed: allowed };
+    });
+    if (!unitList.length) return finish(together, null);
+
+    var meet = grp.visits.length ? grp.visits[0].hub : d.entrance;
+    // Group phase starts at the meeting point (everyone is already there).
+    var grpFromMeet = tour(H, f, meet, restT, function () { return groupAbil; }, d.entrance);
+
+    function evalAssign(assign) {
+      for (var u = 0; u < assign.length; u++) if (unitList[u].allowed && unitList[u].allowed.indexOf(assign[u]) < 0) return { per: [], time: Infinity };
+      var per = players.map(function () { return []; });
+      assign.forEach(function (pi, i) { per[pi] = per[pi].concat(unitList[i].tasks.map(function (t) { return { q: t.q, steps: t.steps, after: [] }; })); });
+      var res = per.map(function (list, pi) {
+        var p = players[pi];
+        var tr = tour(H, f, start, list, function (n) { return abilOf(p, n === 0); }, meet);
+        return { player: p, pi: pi, visits: tr.visits, toMeet: tr.final, arrive: tr.time };
+      });
+      if (warlockIdx >= 0 && N >= 3) {
+        var tw = res[warlockIdx].arrive;
+        var others = res.filter(function (r) { return r.pi !== warlockIdx; });
+        var sorted = others.map(function (r) { return r.arrive; }).sort(function (a, b) { return a - b; });
+        var ready = Math.max(tw, sorted[1]);
+        var k = 0;
+        others.slice().sort(function (a, b) { return a.arrive - b.arrive; }).forEach(function (r) {
+          var doneAt = r.arrive - r.toMeet.min;   // finished own pickups
+          var at = Math.max(doneAt, ready + SUMMON * k) + SUMMON;
+          if (at < r.arrive - 0.01) {
+            k++;
+            r.toMeet = { min: at - doneAt, via: "Warlock summon" };
+            r.arrive = at; r.summoned = true;
+          }
+        });
+      }
+      var make = 0; res.forEach(function (r) { if (r.arrive > make) make = r.arrive; });
+      return { per: res, time: make };
+    }
+    var C = unitList.length, best = null;
+    var total = Math.pow(N, C);
+    if (total <= 4000) {
+      var a = new Array(C).fill(0);
+      for (var n = 0; n < total; n++) {
+        var x = n; for (var i = 0; i < C; i++) { a[i] = x % N; x = Math.floor(x / N); }
+        var r = evalAssign(a);
+        if (!best || r.time < best.time - 1e-9) { best = r; best.assign = a.slice(); }
+      }
+    } else {
+      var ga = unitList.map(function (u) { return u.allowed ? u.allowed[0] : 0; });
+      for (var j = 0; j < C; j++) {
+        var bj = null;
+        for (var pi = 0; pi < N; pi++) { if (unitList[j].allowed && unitList[j].allowed.indexOf(pi) < 0) continue; ga[j] = pi; var rr = evalAssign(ga.slice(0, C)); if (!bj || rr.time < bj.time) bj = { time: rr.time, pi: pi }; }
+        ga[j] = bj.pi;
+      }
+      best = evalAssign(ga); best.assign = ga;
+    }
+    var split = { mode: "split", players: best.per, splitTime: best.time, meet: meet, group: grpFromMeet, total: best.time + grpFromMeet.time };
+    split.shares = [];
+    best.per.forEach(function (r) { r.visits.forEach(function (v) { v.acts.forEach(function (ac) { if (!ac.cls) split.shares.push({ q: ac.q, from: r.player.name }); }); }); });
+    if (split.total >= together.total - 0.5) return finish(together, split.total);
+    return finish(split, together.total);
+
+    function finish(res, other) { res.compare = other; res.tasks = tasks.length; return res; }
+  }
+
+  var api = { plan: plan, levelInfo: levelInfo, travel: travel, baseTravel: baseTravel, isLive: isLive, forFaction: forFaction, isOptional: isOptional, pathOf: pathOf, routable: routable, CITIES: CITIES };
+  if (typeof module !== "undefined" && module.exports) module.exports = api; else root.Planner = api;
+})(this);
+</script>
+<script>
+(function () {
+  var DATA = {"hubs":{"SW":{"name":"Stormwind","zone":"Stormwind City","cont":"EK","x":42,"y":78,"ride":{"A":0,"H":null}},"IF":{"name":"Ironforge","zone":"Ironforge","cont":"EK","x":47,"y":57,"ride":{"A":0,"H":null}},"UC":{"name":"Undercity","zone":"Undercity","cont":"EK","x":42,"y":22,"ride":{"A":null,"H":0}},"DARN":{"name":"Darnassus","zone":"Darnassus","cont":"K","x":36,"y":8,"ride":{"A":1,"H":null}},"ORG":{"name":"Orgrimmar","zone":"Orgrimmar","cont":"K","x":60,"y":40,"ride":{"A":null,"H":0}},"TB":{"name":"Thunder Bluff","zone":"Thunder Bluff","cont":"K","x":46,"y":54,"ride":{"A":null,"H":0}},"MENETHIL":{"name":"Menethil Harbor","zone":"Wetlands","cont":"EK","x":40,"y":50,"ride":{"A":0,"H":null}},"GROMGOL":{"name":"Grom'gol","zone":"Stranglethorn Vale","cont":"EK","x":42,"y":90,"ride":{"A":null,"H":0}},"AUBERDINE":{"name":"Auberdine","zone":"Darkshore","cont":"K","x":40,"y":22,"ride":{"A":0,"H":null}},"THERAMORE":{"name":"Theramore","zone":"Dustwallow Marsh","cont":"K","x":66,"y":68,"ride":{"A":0,"H":null}},"KHARANOS":{"name":"Kharanos","zone":"Dun Morogh","cont":"EK","x":44,"y":58,"ride":{"A":2,"H":4}},"LAKESHIRE":{"name":"Lakeshire","zone":"Redridge Mountains","cont":"EK","x":53,"y":79,"ride":{"A":0,"H":3}},"NETHERGARDE":{"name":"Nethergarde Keep","zone":"Blasted Lands","cont":"EK","x":61,"y":88,"ride":{"A":0,"H":3}},"DAIO":{"name":"Daio the Decrepit","zone":"Blasted Lands","cont":"EK","x":58,"y":87,"ride":{"A":2,"H":3}},"MORGANS":{"name":"Morgan's Vigil","zone":"Burning Steppes","cont":"EK","x":57,"y":76,"ride":{"A":0,"H":3}},"FLAMECREST":{"name":"Flame Crest","zone":"Burning Steppes","cont":"EK","x":53,"y":72,"ride":{"A":3,"H":0}},"SLITHER":{"name":"Slither Rock","zone":"Burning Steppes","cont":"EK","x":58,"y":72,"ride":{"A":3,"H":3}},"BS_FIELD":{"name":"Burning Steppes (mobs and relics)","zone":"Burning Steppes","cont":"EK","x":54,"y":74,"ride":{"A":2,"H":2}},"BRM":{"name":"Blackrock Mountain","zone":"Burning Steppes","cont":"EK","x":48,"y":71,"ride":{"A":3,"H":2}},"THORIUM":{"name":"Thorium Point","zone":"Searing Gorge","cont":"EK","x":47,"y":67,"ride":{"A":0,"H":0}},"KALARAN":{"name":"Kalaran Windblade","zone":"Searing Gorge","cont":"EK","x":47,"y":69,"ride":{"A":1,"H":1}},"KARGATH":{"name":"Kargath","zone":"Badlands","cont":"EK","x":52,"y":66,"ride":{"A":2,"H":0}},"LOTWIL":{"name":"Lotwil Veriatus","zone":"Badlands","cont":"EK","x":56,"y":66,"ride":{"A":3,"H":2}},"DALARAN":{"name":"Dalaran","zone":"Alterac Mountains","cont":"EK","x":40,"y":38,"ride":{"A":3,"H":3}},"CHILLWIND":{"name":"Chillwind Camp","zone":"Western Plaguelands","cont":"EK","x":46,"y":35,"ride":{"A":0,"H":3}},"BULWARK":{"name":"The Bulwark","zone":"Tirisfal Glades","cont":"EK","x":48,"y":26,"ride":{"A":4,"H":2}},"CAERDARROW":{"name":"Caer Darrow","zone":"Western Plaguelands","cont":"EK","x":50,"y":33,"ride":{"A":2,"H":4}},"LIGHTSHOPE":{"name":"Light's Hope Chapel","zone":"Eastern Plaguelands","cont":"EK","x":66,"y":28,"ride":{"A":0,"H":0}},"TERRORDALE":{"name":"Terrordale","zone":"Eastern Plaguelands","cont":"EK","x":54,"y":22,"ride":{"A":4,"H":4}},"MARRIS":{"name":"The Marris Stead","zone":"Eastern Plaguelands","cont":"EK","x":56,"y":30,"ride":{"A":3,"H":3}},"STRAT":{"name":"Stratholme","zone":"Eastern Plaguelands","cont":"EK","x":59,"y":17,"ride":{"A":4,"H":4}},"SUNWATCHER":{"name":"Sunwatcher Plateau","zone":"Mulgore","cont":"K","x":44,"y":52,"ride":{"A":4,"H":2}},"GADGETZAN":{"name":"Gadgetzan","zone":"Tanaris","cont":"K","x":63,"y":82,"ride":{"A":0,"H":0}},"STEAMWHEEDLE":{"name":"Steamwheedle Port","zone":"Tanaris","cont":"K","x":67,"y":80,"ride":{"A":2,"H":2}},"EVERLOOK":{"name":"Everlook","zone":"Winterspring","cont":"K","x":62,"y":17,"ride":{"A":0,"H":0}},"MOONGLADE":{"name":"Moonglade","zone":"Moonglade","cont":"K","x":52,"y":13,"ride":{"A":0,"H":0}},"HALEH":{"name":"Mazthoril","zone":"Winterspring","cont":"K","x":60,"y":20,"ride":{"A":3,"H":3}},"LORAX":{"name":"Lorax","zone":"Winterspring","cont":"K","x":63,"y":23,"ride":{"A":2,"H":2}},"FEATHERMOON":{"name":"Feathermoon Stronghold","zone":"Feralas","cont":"K","x":32,"y":72,"ride":{"A":0,"H":null}},"MOJACHE":{"name":"Camp Mojache","zone":"Feralas","cont":"K","x":47,"y":73,"ride":{"A":4,"H":0}},"LARISS":{"name":"Lariss Pavilion","zone":"Feralas","cont":"K","x":48,"y":69,"ride":{"A":4,"H":2}},"DIREMAUL":{"name":"Dire Maul","zone":"Feralas","cont":"K","x":40,"y":71,"ride":{"A":4,"H":4}},"SILITHUS":{"name":"Southwind Village","zone":"Silithus","cont":"K","x":42,"y":87,"ride":{"A":2,"H":2}},"URSOLAN":{"name":"Ursolan","zone":"Azshara","cont":"K","x":70,"y":26,"ride":{"A":5,"H":4}},"ELDARATH":{"name":"Ruins of Eldarath","zone":"Azshara","cont":"K","x":71,"y":31,"ride":{"A":4,"H":3}},"OGTINC":{"name":"Ogtinc","zone":"Azshara","cont":"K","x":71,"y":33,"ride":{"A":4,"H":3}},"BMH":{"name":"Blackmaw Hold","zone":"Azshara","cont":"K","x":68,"y":27,"ride":{"A":5,"H":4}},"UNGORO":{"name":"Marshal's Refuge","zone":"Un'Goro Crater","cont":"K","x":52,"y":81,"ride":{"A":0,"H":0}},"SHAPERS":{"name":"Shaper's Terrace","zone":"Un'Goro Crater","cont":"K","x":52,"y":79,"ride":{"A":1,"H":1}}},"dungeons":[{"id":"brd","name":"Blackrock Depths","short":"BRD","range":"52-60","entrance":"BRM","entranceNote":"Blackrock Mountain, between Burning Steppes and Searing Gorge.","notes":["Molten Core isn't in Forever, so Attunement to the Core and A Binding Contract are dead.","Dark Iron Legacy is taken as a ghost: everyone dies once in Blackrock Mountain.","Kill Overmaster Pyron (outside the BRD portal) before your first run so you can carry the follow-ups in."],"sources":["https://foreverchanges.pro/quests/blackrock-depths","https://conquestcapped.com/guides/wow-forever/wow-forever-blackrock-depths-quests/","https://www.zockify.com/forever/dungeons/blackrock-depths/"],"quests":[{"n":"Dark Iron Legacy","f":"B","req":48,"cat":"pre_run_pickup","share":false,"start":"Franclorn Forgewright (ghost), Blackrock Mountain","path":[{"hub":"BRM","a":"take","t":"Die, then take parts 1 and 2 from Franclorn as a ghost","work":3}],"note":"Part 2 gives the Shadowforge Key; one holder per group is enough."},{"n":"Ribbly Screwspigot","f":"B","req":48,"cat":"pre_run_pickup","share":true,"start":"Yuka Screwspigot, Flame Crest (66.0, 22.0)","path":[{"hub":"FLAMECREST","a":"take","t":"Yuka Screwspigot"}]},{"n":"Yuka Screwspigot","f":"B","req":48,"cat":"optional","share":true,"start":"Yorba Screwspigot, Steamwheedle Port, Tanaris","path":[{"hub":"STEAMWHEEDLE","a":"take","t":"Yorba Screwspigot"},{"hub":"FLAMECREST","a":"turnin","t":"Yuka Screwspigot"}],"note":"Breadcrumb for Ribbly. XP only."},{"n":"The Heart of the Mountain","f":"B","req":50,"cat":"pre_run_pickup","share":true,"start":"Maxwort Uberglint, Flame Crest (65.2, 23.8)","path":[{"hub":"FLAMECREST","a":"take","t":"Maxwort Uberglint"}],"note":"Loot repeatable since the Nov 9 hotfix."},{"n":"A Taste of Flame","f":"B","req":52,"cat":"optional","share":false,"start":"Cyrus Therepentous, Slither Rock (94.8, 31.6)","path":[{"hub":"KALARAN","a":"do","t":"Kalaran Windblade: talk through Divine Retribution"},{"hub":"SLITHER","a":"take","t":"Cyrus; kill the level 54 elite drake he spawns for the molt","work":6}],"pre":true,"note":"Needs Divine Retribution from Kalaran Windblade, Searing Gorge (39, 39)."},{"n":"The Love Potion","f":"B","req":50,"cat":"optional","share":false,"start":"Mistress Nagmara, Grim Guzzler (inside)","ch":"changed","note":"Gromsblood, Giant Silver Veins and a vial filled in Un'Goro."},{"n":"The Spectral Chalice","f":"B","req":40,"cat":"optional","share":true,"start":"Spectral Chalice, Summoners' Tomb (inside)","ch":"changed","note":"Mining 230."},{"n":"Rocknot's Ale","f":"B","req":1,"cat":"optional","share":false,"start":"Private Rocknot, Grim Guzzler (inside)","note":"Repeatable, no XP."},{"n":"Attunement to the Core","f":"B","req":55,"cat":"attunement","share":true,"start":"Lothos Riftwaker, Blackrock Mountain","status":"not_in_forever","note":"Molten Core isn't in Forever."},{"n":"A Binding Contract","f":"B","req":60,"cat":"optional","share":false,"start":"Thorium Brotherhood Contract (item)","status":"not_in_forever","note":"Needs a Sulfuron Ingot from Molten Core."},{"n":"The Challenge","f":"B","req":58,"cat":"followup","share":false,"start":"Falrin Treeshaper, Dire Maul","status":"unclear","note":"Tier 0.5 (Dungeon Set 2). Listed in Forever data but not confirmed live."},{"n":"Overmaster Pyron","f":"A","req":48,"cat":"pre_run_pickup","share":true,"start":"Jalinda Sprig, Morgan's Vigil (85.4, 70.0)","path":[{"hub":"MORGANS","a":"take","t":"Jalinda Sprig"},{"hub":"BRM","a":"do","t":"Kill Pyron (elite) outside the BRD portal","work":3},{"hub":"MORGANS","a":"turnin","t":"Jalinda Sprig"}]},{"n":"Incendius!","f":"A","req":48,"cat":"pre_run_pickup","share":true,"start":"Jalinda Sprig, Morgan's Vigil","path":[{"hub":"MORGANS","a":"take","t":"Jalinda Sprig"}],"pre":true,"after":["Overmaster Pyron"]},{"n":"The Good Stuff","f":"A","req":50,"cat":"pre_run_pickup","share":true,"start":"Oralius, Morgan's Vigil (84.5, 68.5)","path":[{"hub":"MORGANS","a":"take","t":"Oralius"}]},{"n":"Ragnar Thunderbrew","f":"A","req":50,"cat":"optional","share":true,"start":"Enohar Thunderbrew, Nethergarde Keep","path":[{"hub":"NETHERGARDE","a":"take","t":"Enohar Thunderbrew"},{"hub":"KHARANOS","a":"turnin","t":"Ragnar Thunderbrew"}],"note":"Breadcrumb for Hurley. 550 XP."},{"n":"Hurley Blackbreath","f":"A","req":50,"cat":"pre_run_pickup","share":true,"start":"Ragnar Thunderbrew, Kharanos (46.8, 52.5)","path":[{"hub":"KHARANOS","a":"take","t":"Ragnar Thunderbrew"}],"ch":"changed","note":"New reward option: Ragnar's Favorite Hat."},{"n":"The Smoldering Ruins of Thaurissan","f":"A","req":48,"cat":"pre_run_pickup","share":false,"start":"Royal Historian Archesonus, Ironforge (38.5, 55.5)","path":[{"hub":"IF","a":"take","t":"Archesonus: listen to part 1, take part 2"},{"hub":"BS_FIELD","a":"do","t":"Read the Thaurissan relics","work":4},{"hub":"IF","a":"turnin","t":"Archesonus"}]},{"n":"Kharan Mighthammer","f":"A","req":50,"cat":"pre_run_pickup","share":true,"start":"King Magni Bronzebeard, Ironforge (39.4, 55.6)","path":[{"hub":"IF","a":"take","t":"King Magni"}],"pre":true,"after":["The Smoldering Ruins of Thaurissan"],"ch":"changed"},{"n":"Kharan's Tale","f":"A","req":50,"cat":"inside_pickup","share":true,"start":"Kharan Mighthammer, Detention Block"},{"n":"The Bearer of Bad News","f":"A","req":50,"cat":"inside_pickup","share":true,"start":"Kharan Mighthammer, Detention Block","note":"Turn in to Magni."},{"n":"The Fate of the Kingdom","f":"A","req":50,"cat":"followup","share":true,"start":"King Magni, Ironforge","note":"Kill the Emperor, keep Moira alive."},{"n":"The Princess's Surprise","f":"A","req":50,"cat":"followup","share":true,"start":"Princess Moira (inside)"},{"n":"Dragonkin Menace","f":"A","req":48,"cat":"pre_run_pickup","share":true,"start":"Helendis Riverhorn, Morgan's Vigil (85.5, 68.9)","path":[{"hub":"MORGANS","a":"take","t":"Helendis Riverhorn"},{"hub":"BS_FIELD","a":"do","t":"Kill the dragonkin","work":8},{"hub":"MORGANS","a":"turnin","t":"Helendis Riverhorn"}],"note":"Starts the Alliance Onyxia attunement chain."},{"n":"The True Masters","f":"A","req":48,"cat":"pre_run_pickup","share":false,"start":"Helendis Riverhorn, Morgan's Vigil","path":[{"hub":"MORGANS","a":"take","t":"Helendis Riverhorn"},{"hub":"LAKESHIRE","a":"do","t":"Magistrate Solomon"},{"hub":"SW","a":"do","t":"Stormwind Keep: Highlord Bolvar and Lady Prestor","work":2},{"hub":"LAKESHIRE","a":"do","t":"Magistrate Solomon"},{"hub":"MORGANS","a":"turnin","t":"Marshal Maxwell (last steps)","work":2}],"pre":true,"after":["Dragonkin Menace"],"note":"Six talk/courier steps."},{"n":"Marshal Windsor","f":"A","req":48,"cat":"pre_run_pickup","share":true,"start":"Marshal Maxwell, Morgan's Vigil (84.6, 68.8)","path":[{"hub":"MORGANS","a":"take","t":"Marshal Maxwell"}],"pre":true,"after":["The True Masters"]},{"n":"Abandoned Hope","f":"A","req":48,"cat":"inside_pickup","share":true,"start":"Marshal Windsor (inside)","ch":"changed"},{"n":"A Crumpled Up Note","f":"A","req":50,"cat":"followup","share":false,"start":"Drops in BRD once Abandoned Hope is turned in"},{"n":"A Shred of Hope","f":"A","req":50,"cat":"followup","share":true,"start":"Marshal Windsor (inside)"},{"n":"Jail Break!","f":"A","req":50,"cat":"followup","share":false,"start":"Marshal Windsor (inside)","note":"Escort."},{"n":"Fragment of the Firelands","f":"H","req":46,"cat":"pre_run_pickup","share":true,"start":"Alaana Stormwalker, Sunwatcher Plateau, Mulgore (33.4, 22.5)","path":[{"hub":"SUNWATCHER","a":"take","t":"Alaana Stormwalker"}],"ch":"new","note":"New in Forever. Turn in at Magmus. Location from one tracker; shareability assumed."},{"n":"Vivian Lagrave","f":"H","req":50,"cat":"optional","share":true,"start":"Apothecary Zinge, Undercity","path":[{"hub":"UC","a":"take","t":"Apothecary Zinge, The Apothecarium"},{"hub":"KARGATH","a":"turnin","t":"Shadowmage Vivian Lagrave"}],"note":"Breadcrumb. XP only."},{"n":"Disharmony of Flame","f":"H","req":48,"cat":"pre_run_pickup","share":true,"start":"Thunderheart, Kargath (3.4, 48.2)","path":[{"hub":"KARGATH","a":"take","t":"Thunderheart"},{"hub":"BRM","a":"do","t":"Kill Pyron (elite) outside the BRD portal","work":3},{"hub":"KARGATH","a":"turnin","t":"Thunderheart","opts":[{"via":"Hearth","min":1}]}]},{"n":"Disharmony of Fire","f":"H","req":48,"cat":"pre_run_pickup","share":true,"start":"Thunderheart, Kargath","path":[{"hub":"KARGATH","a":"take","t":"Thunderheart"}],"pre":true,"after":["Disharmony of Flame"]},{"n":"Commander Gor'shak","f":"H","req":48,"cat":"pre_run_pickup","share":true,"start":"Galamav the Marksman, Kargath (5.8, 47.4)","path":[{"hub":"KARGATH","a":"take","t":"Galamav the Marksman"}],"pre":true,"after":["Disharmony of Flame"]},{"n":"The Last Element","f":"H","req":48,"cat":"pre_run_pickup","share":true,"start":"Shadowmage Vivian Lagrave, Kargath (3.0, 47.5)","path":[{"hub":"KARGATH","a":"take","t":"Shadowmage Vivian Lagrave"}],"pre":true,"after":["Disharmony of Flame"],"ch":"changed","note":"Some trackers list Disharmony of Flame as a prereq. New reward option: Dark Iron Signet."},{"n":"Lost Thunderbrew Recipe","f":"H","req":50,"cat":"pre_run_pickup","share":true,"start":"Shadowmage Vivian Lagrave, Kargath","path":[{"hub":"KARGATH","a":"take","t":"Shadowmage Vivian Lagrave"}],"ch":"changed"},{"n":"KILL ON SIGHT: Dark Iron Dwarves","f":"H","req":48,"cat":"pre_run_pickup","share":true,"start":"WANTED poster, Kargath (3.8, 47.5)","path":[{"hub":"KARGATH","a":"take","t":"WANTED poster left of the inn door"}]},{"n":"KILL ON SIGHT: High Ranking Dark Iron Officials","f":"H","req":50,"cat":"followup","share":true,"start":"Poster right of the Kargath inn door"},{"n":"Grark Lorkrub","f":"H","req":52,"cat":"followup","share":false,"start":"Lexlort, Kargath (5.8, 47.5)"},{"n":"Precarious Predicament","f":"H","req":52,"cat":"followup","share":false,"start":"Grark Lorkrub, Burning Steppes (40.2, 34.2)","note":"Escort."},{"n":"Operation: Death to Angerforge","f":"H","req":52,"cat":"followup","share":true,"start":"Warlord Goretooth, Kargath"},{"n":"The Rise of the Machines","f":"H","req":52,"cat":"pre_run_pickup","share":false,"start":"Hierophant Theodora Mulvadania, Kargath (3.0, 47.6)","path":[{"hub":"KARGATH","a":"take","t":"Theodora (part 1). Set your hearth here."},{"hub":"BS_FIELD","a":"do","t":"10 Fractured Elemental Shards","work":8},{"hub":"KARGATH","a":"do","t":"Turn in the shards to Theodora","opts":[{"via":"Hearth","min":1}]},{"hub":"LOTWIL","a":"take","t":"Lotwil Veriatus (25.8, 44.7)"}],"pre":true},{"n":"What Is Going On?","f":"H","req":48,"cat":"inside_pickup","share":false,"start":"Commander Gor'shak (inside)","ch":"changed","note":"Two parts; part 2 ends at Thrall."},{"n":"The Eastern Kingdoms","f":"H","req":48,"cat":"followup","share":true,"start":"Thrall, Orgrimmar","ch":"changed"},{"n":"The Royal Rescue","f":"H","req":48,"cat":"followup","share":true,"start":"Thrall, Orgrimmar","ch":"changed"},{"n":"The Princess Saved?","f":"H","req":48,"cat":"followup","share":true,"start":"Princess Moira (inside)","ch":"changed"}]},{"id":"dme","name":"Warpwood Quarter","aka":"Dire Maul East","short":"DME","range":"54-60","entrance":"DIREMAUL","entranceNote":"Dire Maul, central Feralas. Pusillin drops the Crescent Key for the other wings.","notes":["Shards of the Felvine needs each player's own Reliquary of Purity from Silithus first. A druid's Moonglade teleport helps.","Most Forever changes here are XP. Lethtendris's Web gained two new reward choices."],"sources":["https://foreverchanges.pro/quests/dire-maul","https://foreverchanges.pro/dungeons/dire-maul-east","https://foreverchanges.pro/quest/7488/lethtendriss-web","https://foreverchanges.pro/quest/7492/camp-mojache","https://foreverchanges.pro/quest/7441/pusillin-and-the-elder-azjtordin","https://foreverchanges.pro/quest/5526/shards-of-the-felvine"],"quests":[{"n":"Lethtendris's Web","f":"A","req":54,"cat":"pre_run_pickup","share":true,"start":"Latronicus Moonspear, Feathermoon Stronghold (30.4, 46.2)","path":[{"hub":"FEATHERMOON","a":"take","t":"Latronicus Moonspear"}],"ch":"changed","note":"New reward choices: Warpwood Bracers, Satyrhide Armbands."},{"n":"Feathermoon Stronghold","f":"A","req":50,"cat":"optional","share":true,"start":"Crier Goodman, Stormwind (sources disagree: Courier Hammerfall, Ironforge)","path":[{"hub":"SW","a":"take","t":"Crier Goodman"},{"hub":"FEATHERMOON","a":"turnin","t":"Latronicus Moonspear"}],"note":"Breadcrumb. XP only."},{"n":"Lethtendris's Web","f":"H","req":54,"cat":"pre_run_pickup","share":true,"start":"Talo Thornhoof, Camp Mojache (76.2, 43.8)","path":[{"hub":"MOJACHE","a":"take","t":"Talo Thornhoof"}],"ch":"changed","note":"New reward choices: Warpwood Bracers, Satyrhide Armbands."},{"n":"Camp Mojache","f":"H","req":50,"cat":"optional","share":true,"start":"Warcaller Gorlach, Orgrimmar (48.2, 66.1)","path":[{"hub":"ORG","a":"take","t":"Warcaller Gorlach"},{"hub":"MOJACHE","a":"turnin","t":"Talo Thornhoof"}],"note":"Breadcrumb. XP only."},{"n":"Pusillin and the Elder Azj'Tordin","f":"B","req":54,"cat":"pre_run_pickup","share":true,"start":"Azj'Tordin, Lariss Pavilion (76.9, 37.4)","path":[{"hub":"LARISS","a":"take","t":"Azj'Tordin"}],"note":"Pusillin also drops the Crescent Key."},{"n":"Shards of the Felvine","f":"B","req":56,"cat":"pre_run_pickup","share":false,"start":"Rabine Saturna, Nighthaven, Moonglade (51.7, 45.1)","path":[{"hub":"MOONGLADE","a":"take","t":"Rabine Saturna: A Reliquary of Purity"},{"hub":"SILITHUS","a":"do","t":"Loot the Dusty Reliquary in a Southwind Village building","work":4},{"hub":"MOONGLADE","a":"turnin","t":"Rabine Saturna: turn in, take Shards of the Felvine"}],"pre":true,"note":"Kill Alzzin, then fill the Reliquary at a Felvine patch."},{"n":"The Prison's Bindings","f":"B","req":60,"cat":"class","share":true,"start":"Daio the Decrepit, Blasted Lands (34.1, 50.1)","path":[{"hub":"DAIO","a":"take","t":"Daio the Decrepit"}],"cls":"Warlock","note":"Warlock only. 15 Satyr Blood from Wildspawn satyrs."},{"n":"Arcane Refreshment","f":"B","req":60,"cat":"class","share":false,"start":"Lorekeeper Lydros, the Athenaeum (Dire Maul West)","cls":"Mage","note":"Starts in DMW; the kill (Hydrospawn) is in DME."},{"n":"The Left Piece of Lord Valthalak's Amulet (Isalien)","f":"B","req":58,"cat":"followup","share":false,"start":"Bodley, Blackrock Mountain","status":"unclear","note":"Tier 0.5 (Dungeon Set 2). Listed in Forever data but not confirmed live."}]},{"id":"lbrs","name":"Lower Blackrock Spire","short":"LBRS","range":"55-60","entrance":"BRM","entranceNote":"Blackrock Mountain, upper level. No key needed.","notes":["Seal of Ascension (UBRS key) starts from an Unadorned Seal that drops inside. Forever data says level 57 (Classic guides say 55).","Mother's Milk: keep the poison debuff until Ragged John, so don't dispel it.","New in Forever: Blood and Thunder (Horde), from Warlord Goretooth in Kargath. It's probably a lead-in to Warlord's Command, but that isn't confirmed.","Smolderweb Carrier and Worg Carrier are no longer bind-on-pickup. Quartermaster Zigris is a normal elite."],"sources":["https://foreverchanges.pro/quests/blackrock-spire","https://foreverchanges.pro/quest/98325/blood-and-thunder","https://foreverchanges.pro/quest/4788/the-final-tablets","https://foreverchanges.pro/quest/5081/maxwells-mission","https://foreverchanges.pro/quest/4903/warlords-command","https://foreverchanges.pro/quest/5089/general-drakkisaths-command"],"quests":[{"n":"Put Her Down","f":"A","req":55,"cat":"pre_run_pickup","share":true,"start":"Helendis Riverhorn, Morgan's Vigil (85.8, 68.9)","path":[{"hub":"MORGANS","a":"take","t":"Helendis Riverhorn"}],"note":"Kill Halycon."},{"n":"Bijou's Belongings","f":"A","req":55,"cat":"inside_pickup","share":true,"start":"Bijou, ledge above Hordemar City"},{"n":"Message to Maxwell","f":"A","req":55,"cat":"followup","share":false,"start":"Bijou (inside)"},{"n":"Maxwell's Mission","f":"A","req":55,"cat":"followup","share":true,"start":"Marshal Maxwell, Morgan's Vigil","ch":"changed","note":"Kill Voone, Omokk and Wyrmthalak."},{"n":"General Drakkisath's Command","f":"A","req":55,"cat":"inside_pickup","share":false,"start":"Item from Overlord Wyrmthalak","ch":"changed","note":"Turn in to Maxwell; unlocks General Drakkisath's Demise (UBRS)."},{"n":"Blood and Thunder","f":"H","req":55,"cat":"optional","share":true,"start":"Warlord Goretooth, Kargath (3.4, 48.0)","path":[{"hub":"KARGATH","a":"take","t":"Warlord Goretooth"}],"ch":"new","note":"New in Forever. Possibly the lead-in to Warlord's Command."},{"n":"Warlord's Command","f":"H","req":55,"cat":"attunement","share":false,"start":"Warlord Goretooth, Kargath watchtower (5.8, 47.5)","path":[{"hub":"KARGATH","a":"take","t":"Warlord Goretooth: talk through his dialogue for the item that starts it"}],"ch":"changed","note":"Step 1 of the Horde Onyxia attunement. Kill Voone, Omokk, Wyrmthalak and loot the documents."},{"n":"Operative Bijou","f":"H","req":55,"cat":"pre_run_pickup","share":true,"start":"Lexlort, Kargath watchtower (5.9, 47.6)","path":[{"hub":"KARGATH","a":"take","t":"Lexlort"}]},{"n":"Bijou's Belongings","f":"H","req":55,"cat":"inside_pickup","share":false,"start":"Bijou, ledge above Hordemar City"},{"n":"Bijou's Reconnaissance Report","f":"H","req":55,"cat":"followup","share":null,"start":"Bijou (inside)","note":"Turn in to Lexlort."},{"n":"The Pack Mistress","f":"H","req":55,"cat":"pre_run_pickup","share":true,"start":"Galamav the Marksman, Kargath (6.0, 47.7)","path":[{"hub":"KARGATH","a":"take","t":"Galamav the Marksman"}],"note":"Kill Halycon."},{"n":"Kibler's Exotic Pets","f":"B","req":55,"cat":"pre_run_pickup","share":false,"start":"Kibler, Flame Crest cave (65.9, 21.9)","path":[{"hub":"FLAMECREST","a":"take","t":"Kibler (cave)"}],"ch":"changed","note":"Each player needs their own cage. Worg Carrier no longer BoP."},{"n":"En-Ay-Es-Tee-Why","f":"B","req":55,"cat":"pre_run_pickup","share":true,"start":"Kibler, Flame Crest cave (65.9, 21.9)","path":[{"hub":"FLAMECREST","a":"take","t":"Kibler (cave)"}],"ch":"changed","note":"15 Spire Spider Eggs."},{"n":"Mother's Milk","f":"B","req":55,"cat":"pre_run_pickup","share":true,"start":"Ragged John, Flame Crest","path":[{"hub":"FLAMECREST","a":"take","t":"Ragged John (outside the cave)"}],"note":"Keep the debuff up until you're back with him."},{"n":"Urok Doomhowl","f":"B","req":55,"cat":"inside_pickup","share":false,"start":"Warosh, Hordemar City"},{"n":"Seal of Ascension","f":"B","req":57,"cat":"attunement","share":false,"start":"Vaelan, top of the rubble ramp near the entrance","note":"UBRS key. Needs an Unadorned Seal (drops inside). Part 2 needs Emberstrife in Dustwallow Marsh (elite)."},{"n":"The Final Tablets","f":"B","req":40,"cat":"optional","share":true,"start":"Prospector Ironboot, Steamwheedle Port (66.9, 24.0)","path":[{"hub":"STEAMWHEEDLE","a":"take","t":"Prospector Ironboot"}],"pre":true,"note":"Only if you've done the Mosh'aru tablets chain (Zul'Farrak)."},{"n":"The Left Piece of Lord Valthalak's Amulet (Mor Grayhoof)","f":"B","req":58,"cat":"followup","share":false,"start":"Bodley, Blackrock Mountain","status":"unclear","note":"Tier 0.5 (Dungeon Set 2). Listed in Forever data but not confirmed live."}]},{"id":"bmh","name":"Blackmaw Hold","short":"BMH","range":"55-60","entrance":"BMH","isNew":true,"entranceNote":"Northern Azshara, furbolg tunnel at about 38.7, 33.4. The portal shows on the Winterspring map.","notes":["New Forever dungeon. Every quest here is new.","The Twin Bears and Blackmaw Reclamation reportedly need Neutral with Timbermaw Hold.","Blackmaw Reclamation is a long outdoor chain (Azshara, Felwood, Timbermaw Hold). Do it as its own session."],"sources":["https://foreverchanges.pro/quests/blackmaw-hold","https://foreverchanges.pro/dungeons/blackmaw-hold","https://foreverchanges.pro/quest/92343/","https://foreverchanges.pro/quest/92344/","https://foreverchanges.pro/quest/92066/","https://foreverchanges.pro/quest/92069/"],"quests":[{"n":"Get to the Roots of It","f":"A","req":45,"cat":"pre_run_pickup","share":true,"start":"Mathrengyl Bearwalker, Cenarion Enclave, Darnassus (35.2, 8.2)","path":[{"hub":"DARN","a":"take","t":"Mathrengyl Bearwalker, Cenarion Enclave"}],"ch":"new","note":"10 Nordrassil Root Caps inside."},{"n":"Get to the Roots of It","f":"H","req":45,"cat":"pre_run_pickup","share":true,"start":"Nara Wildmane, Elder Rise, Thunder Bluff (75.8, 31.1)","path":[{"hub":"TB","a":"take","t":"Nara Wildmane, Elder Rise"}],"ch":"new","note":"10 Nordrassil Root Caps inside."},{"n":"Beneath Nordrassil","f":"A","req":45,"cat":"optional","share":null,"start":"Commander Truesong, Azshara (location not given)","ch":"new","note":"Breadcrumb from Azshara to Darnassus."},{"n":"Beneath Nordrassil","f":"H","req":45,"cat":"optional","share":null,"start":"Jediga, Valormok, Azshara","ch":"new","note":"Breadcrumb from Azshara to Thunder Bluff."},{"n":"The Twin Bears","f":"B","req":47,"cat":"pre_run_pickup","share":true,"start":"Lorekeeper Nok, Ursolan, Azshara","path":[{"hub":"URSOLAN","a":"take","t":"Lorekeeper Nok"}],"ch":"new","note":"Totems of Ursoc and Ursol inside. May need Neutral Timbermaw."},{"n":"Claws That Rend, Tusks that Gore","f":"B","req":45,"cat":"pre_run_pickup","share":true,"start":"Ogtinc, Azshara (42.3, 42.7)","path":[{"hub":"OGTINC","a":"take","t":"Ogtinc"}],"ch":"new","note":"Withermaw and Bonesnout the Unbroken."},{"n":"Blackmaw Magic","f":"A","req":52,"cat":"pre_run_pickup","share":true,"start":"Archmage Timear, Dalaran, Alterac Mountains (15.5, 74.0)","path":[{"hub":"DALARAN","a":"take","t":"Archmage Timear"}],"ch":"new","note":"Blackmaw Ritual Totem from Elder Shaman Bloodmane."},{"n":"Blackmaw Magic","f":"H","req":52,"cat":"pre_run_pickup","share":true,"start":"Muln Earthfury, Sunwatcher Plateau, Mulgore (33.5, 22.5)","path":[{"hub":"SUNWATCHER","a":"take","t":"Muln Earthfury"}],"ch":"new","note":"Blackmaw Ritual Totem from Elder Shaman Bloodmane."},{"n":"Blackmaw Pouches","f":"B","req":55,"cat":"pre_run_pickup","share":true,"start":"Ekkal, Ruins of Eldarath, Azshara (42.0, 38.9)","path":[{"hub":"ELDARATH","a":"take","t":"Ekkal"}],"ch":"new","note":"Repeatable after the first turn-in (+100 Timbermaw)."},{"n":"A Lost Memento","f":"B","req":47,"cat":"inside_pickup","share":false,"start":"Feathered Charm Necklace (drops inside)","ch":"new","note":"Return to Un'ell, Azshara."},{"n":"Blackmaw Reclamation","f":"B","req":47,"cat":"pre_run_pickup","share":null,"start":"Gatekeeper Rageroar, Ursolan (42.3, 20.3)","ch":"new","optRoute":true,"note":"End of a 5 to 10 step chain that starts with Ekkal (The Legashi Threat) and runs through Legashi Stronghold and Timbermaw Hold."},{"n":"Feeding Time!","f":"B","req":null,"cat":"optional","share":null,"start":"Unclear: inside the dungeon or Ruins of Eldarath","ch":"new","status":"unclear","note":"Repeatable Timbermaw reputation quest."}]},{"id":"dmw","name":"Capital Gardens","aka":"Dire Maul West","short":"DMW","range":"56-60","entrance":"DIREMAUL","entranceNote":"Dire Maul, Feralas. Locked doors need the Crescent Key (from Pusillin in DME) or 300 Lockpicking.","notes":["New in Forever: Libram of Binding (repeatable, from Lorekeeper Lydros after Elven Legends).","Libram turn-ins now need level 54. Class book quests need level 54 and give 6,600 XP.","Class books (warrior, paladin, hunter, rogue, priest, shaman, mage, warlock, druid) drop from Dire Maul bosses."],"sources":["https://foreverchanges.pro/quests/dire-maul","https://foreverchanges.pro/quest/7461/the-madness-within","https://foreverchanges.pro/quest/7462/the-treasure-of-the-shendralar","https://foreverchanges.pro/quest/7482/elven-legends","https://foreverchanges.pro/quest/7481/elven-legends","https://foreverchanges.pro/quest/7484/libram-of-focus"],"quests":[{"n":"Elven Legends","f":"A","req":54,"cat":"pre_run_pickup","share":true,"start":"Scholar Runethorn, Feathermoon Stronghold (31.2, 43.9)","path":[{"hub":"FEATHERMOON","a":"take","t":"Scholar Runethorn (patrols the road)"}],"ch":"changed"},{"n":"Elven Legends","f":"H","req":54,"cat":"pre_run_pickup","share":true,"start":"Sage Korolusk, Camp Mojache (75.2, 43.8)","path":[{"hub":"MOJACHE","a":"take","t":"Sage Korolusk (patrols the camp)"}],"ch":"changed"},{"n":"The Madness Within","f":"B","req":56,"cat":"inside_pickup","share":true,"start":"Shen'dralar Ancient, Court of the Highborne","ch":"changed","note":"Talk to him before killing Immol'thar."},{"n":"The Treasure of the Shen'dralar","f":"B","req":56,"cat":"inside_pickup","share":true,"start":"Shen'dralar Ancient (after The Madness Within)","ch":"changed"},{"n":"Libram turn-ins (Focus, Protection, Rapidity)","f":"B","req":54,"cat":"optional","share":true,"start":"Lorekeeper Lydros, the Athenaeum","ch":"changed","note":"Repeatable. Needs the libram plus reagents."},{"n":"Libram of Binding","f":"B","req":57,"cat":"optional","share":null,"start":"Lorekeeper Lydros, the Athenaeum","ch":"new","note":"Forever-only. Repeatable. Rewards Arcanum of Binding (+500 Shen'dralar)."},{"n":"Class book turn-ins","f":"B","req":54,"cat":"class","share":false,"start":"Book drops from Dire Maul bosses","ch":"changed","note":"One per class. Rewards a Royal Seal of Eldre'Thalas.","cls":"All"},{"n":"Foror's Compendium","f":"B","req":60,"cat":"class","share":false,"start":"Foror's Compendium (rare drop)","ch":"changed","cls":"Warrior/Paladin","note":"Leads to Quel'Serrar, which needs Onyxia."},{"n":"Dreadsteed of Xoroth","f":"B","req":60,"cat":"class","share":false,"start":"Mor'zul Bloodbringer, Burning Steppes (12.7, 31.6)","ch":"changed","cls":"Warlock","note":"Epic mount ritual in DMW after a long chain."},{"n":"Anthion's Old Friend","f":"B","req":58,"cat":"followup","share":false,"start":"Anthion Harmon, Eastern Plaguelands","status":"unclear","note":"Tier 0.5 (Dungeon Set 2). Listed in Forever data but not confirmed live."},{"n":"Falrin's Vendetta","f":"B","req":58,"cat":"followup","share":true,"start":"Falrin Treeshaper (inside)","status":"unclear","note":"Tier 0.5 (Dungeon Set 2). Listed in Forever data but not confirmed live."},{"n":"The Instigator's Enchantment","f":"B","req":58,"cat":"followup","share":null,"start":"Falrin Treeshaper (inside)","status":"unclear","note":"Tier 0.5 (Dungeon Set 2). Listed in Forever data but not confirmed live."}]},{"id":"dmn","name":"Gordok Commons","aka":"Dire Maul North","short":"DMN","range":"56-60","entrance":"DIREMAUL","entranceNote":"Dire Maul, Feralas, north side. Gordok keys drop from the guards inside.","notes":["Every quest here starts inside. Nothing to pick up first.","Free Knot! and The Gordok Taste Test now need level 56 (Classic: 57).","Taste Test and Unfinished Gordok Business need a tribute run: kill King Gordok with the other bosses alive."],"sources":["https://foreverchanges.pro/quests/dire-maul","https://foreverchanges.pro/quest/7703/unfinished-gordok-business","https://foreverchanges.pro/quest/5528/the-gordok-taste-test","https://foreverchanges.pro/quest/5525/free-knot","https://foreverchanges.pro/quest/5518/the-gordok-ogre-suit","https://foreverchanges.pro/quest/1193/a-broken-trap"],"quests":[{"n":"Free Knot!","f":"B","req":56,"cat":"inside_pickup","share":true,"start":"Knot Thimblejack (shackled inside)","ch":"changed"},{"n":"Unfinished Gordok Business","f":"B","req":56,"cat":"inside_pickup","share":false,"start":"Captain Kromcrush (after a tribute run)","note":"Needs the Gauntlet of Gordok Might from the Prince's chest in DMW."},{"n":"The Gordok Taste Test","f":"B","req":56,"cat":"inside_pickup","share":true,"start":"Stomper Kreeg (after a tribute run)","ch":"changed"},{"n":"The Gordok Ogre Suit","f":"B","req":56,"cat":"optional","share":true,"start":"Knot Thimblejack (inside)","note":"Runecloth, rugged leather, rune thread, ogre tannin."},{"n":"A Broken Trap","f":"B","req":56,"cat":"optional","share":true,"start":"Broken Trap (object, inside)","note":"Thorium Widget + Frost Oil."}]},{"id":"sht","name":"Shaper's Terrace","short":"ShT","range":"58-60","entrance":"SHAPERS","isNew":true,"entranceNote":"Un'Goro Crater, on the hill above Marshal's Refuge (48.1, 6.1).","notes":["New Forever dungeon. Every quest here is new.","To summon the last boss (Nanaya) you need 15 Power Crystals of each colour: red, blue, green and yellow. Farm them in Un'Goro first.","XP figures come from a pre-launch build. Turn-ins are mostly unconfirmed."],"sources":["https://foreverchanges.pro/dungeons/shapers-terrace","https://foreverchanges.pro/quest/95925/","https://foreverchanges.pro/quest/95924/","https://foreverchanges.pro/quest/95928/","https://foreverchanges.pro/quest/97049/","https://foreverchanges.pro/quest/95926/"],"quests":[{"n":"Mapping the Way Forward","f":"A","req":55,"cat":"pre_run_pickup","share":false,"start":"Curator Thorius, Hall of Explorers, Ironforge (71.5, 16.6)","path":[{"hub":"IF","a":"take","t":"Curator Thorius, Hall of Explorers"}],"ch":"new","note":"Not shareable (one source)."},{"n":"Panic at the Digsite","f":"A","req":55,"cat":"pre_run_pickup","share":true,"start":"Curator Thorius, Hall of Explorers, Ironforge","path":[{"hub":"IF","a":"take","t":"Curator Thorius, Hall of Explorers"}],"ch":"new"},{"n":"Digestible Research","f":"A","req":55,"cat":"inside_pickup","share":false,"start":"Torn field journal near the entrance pond","ch":"new"},{"n":"Crystalline Elements","f":"H","req":55,"cat":"pre_run_pickup","share":true,"start":"Mayena Earthseeker, Sunwatcher Plateau, Mulgore (34.9, 22.1)","path":[{"hub":"SUNWATCHER","a":"take","t":"Mayena Earthseeker"}],"ch":"new"},{"n":"Essence of Seeping Slimes","f":"H","req":55,"cat":"pre_run_pickup","share":true,"start":"Chemist Fuely, The Apothecarium, Undercity (47.7, 73.3)","path":[{"hub":"UC","a":"take","t":"Chemist Fuely, The Apothecarium"}],"ch":"new"},{"n":"The Dark Crystal","f":"H","req":55,"cat":"pre_run_pickup","share":true,"start":"Master Apothecary Faranell, The Apothecarium (48.6, 68.8)","path":[{"hub":"UC","a":"take","t":"Master Apothecary Faranell, The Apothecarium"}],"ch":"new"},{"n":"Prep: 15 Power Crystals of each colour","f":"B","req":null,"cat":"optional","share":false,"start":"Un'Goro Crater (not a quest)","path":[{"hub":"UNGORO","a":"do","t":"Farm red, blue, green and yellow Power Crystals around the crater","work":20}],"note":"Needed to summon the final boss."}]},{"id":"stratl","name":"Stratholme Main Gate","aka":"Stratholme Live","short":"Strat Live","range":"58-60","entrance":"STRAT","entranceNote":"Stratholme, northern Eastern Plaguelands. Key to the City drops from Magistrate Barthilas.","notes":["The tracker's coordinates use Forever's map: Light's Hope NPCs show at about 71, 49, not Classic's 81, 59.","The Great Fras Siabi's target is called Ezra Grimm in one Forever guide. The quest item is Grimm's Premium Tobacco.","Forever changes here are XP only."],"sources":["https://foreverchanges.pro/quests/stratholme","https://foreverchanges.pro/quest/5125/aurius-reckoning","https://foreverchanges.pro/quest/5122/the-medallion-of-faith","https://foreverchanges.pro/quest/5282/the-restless-souls","https://foreverchanges.pro/quest/5281/the-restless-souls","https://foreverchanges.pro/quest/5251/the-archivist"],"quests":[{"n":"The Great Fras Siabi","f":"B","req":55,"cat":"pre_run_pickup","share":true,"start":"Smokey LaRue, Light's Hope Chapel (70.9, 48.4)","path":[{"hub":"LIGHTSHOPE","a":"take","t":"Smokey LaRue"}],"ch":"changed"},{"n":"The Archivist","f":"B","req":55,"cat":"pre_run_pickup","share":true,"start":"Duke Nicholas Zverenhoff, Light's Hope Chapel (71.6, 50.1)","path":[{"hub":"LIGHTSHOPE","a":"take","t":"Duke Nicholas Zverenhoff"}],"note":"Start of the Argent Dawn chain."},{"n":"The Truth Comes Crashing Down","f":"B","req":55,"cat":"followup","share":false,"start":"Head of Balnazzar (drop)","note":"Can't be taken until The Archivist is turned in."},{"n":"The Medallion of Faith","f":"B","req":55,"cat":"inside_pickup","share":true,"start":"Aurius, just inside the Undead side","note":"Medallion is in Malor's Strongbox on the Live side."},{"n":"The Restless Souls","f":"B","req":55,"cat":"pre_run_pickup","share":false,"start":"Egan, Terrordale (11.4, 26.6)","path":[{"hub":"LIGHTSHOPE","a":"take","t":"Caretaker Alen, just south of the chapel: The Restless Souls (part 1)"},{"hub":"TERRORDALE","a":"turnin","t":"Egan, westernmost house: turn in, take part 2"}],"pre":true,"ch":"changed","note":"Use Egan's Blaster on the ghosts; don't kill them."},{"n":"Of Love and Family","f":"B","req":52,"cat":"pre_run_pickup","share":true,"start":"Artist Renfray, Caer Darrow (65.8, 75.4)","optRoute":true,"note":"Needs the Tirion Fordring chain in Eastern Plaguelands first. Can only be shared to people who did that chain."},{"n":"Sweet Serenity","f":"B","req":50,"cat":"optional","share":true,"start":"Lilith the Lithe, Everlook (61.3, 37.1)","path":[{"hub":"EVERLOOK","a":"take","t":"Lilith the Lithe"}],"note":"Blacksmithing 250."},{"n":"The Left Piece of Lord Valthalak's Amulet (Jarien and Sothos)","f":"B","req":58,"cat":"followup","share":false,"start":"Bodley, Blackrock Mountain","status":"unclear","note":"Tier 0.5 (Dungeon Set 2). Listed in Forever data but not confirmed live."}]},{"id":"stratu","name":"Stratholme Service Gate","aka":"Stratholme Undead","short":"Strat UD","range":"58-60","entrance":"STRAT","entranceNote":"Stratholme, east side service entrance.","notes":["Naxxramas isn't in Forever, so the Atiesh summon is dead.","Menethil's Gift needs the Scholomance Sarkhoff chain first (Krastinov, Bag of Horrors, Kirtonos).","Forever changes here are XP only: Aurius' Reckoning went up, The Active Agent and Corruption went down."],"sources":["https://foreverchanges.pro/quests/stratholme","https://foreverchanges.pro/quest/5125/aurius-reckoning","https://foreverchanges.pro/quest/8945/dead-mans-plea","https://foreverchanges.pro/quest/5463/menethils-gift","https://foreverchanges.pro/quest/5213/the-active-agent","https://foreverchanges.pro/quest/6163/ramstein"],"quests":[{"n":"The Flesh Does Not Lie","f":"B","req":55,"cat":"pre_run_pickup","share":true,"start":"Betina Bigglezink, Light's Hope Chapel (71.7, 49.9)","path":[{"hub":"LIGHTSHOPE","a":"take","t":"Betina Bigglezink"}]},{"n":"The Active Agent","f":"B","req":55,"cat":"followup","share":true,"start":"Betina Bigglezink (after The Flesh Does Not Lie)","ch":"changed"},{"n":"Houses of the Holy","f":"B","req":55,"cat":"pre_run_pickup","share":true,"start":"Leonid Barthalomew the Revered, Light's Hope Chapel (71.9, 48.3)","path":[{"hub":"LIGHTSHOPE","a":"take","t":"Leonid Barthalomew"}]},{"n":"Above and Beyond","f":"B","req":55,"cat":"followup","share":true,"start":"Duke Nicholas Zverenhoff (after the Live-side chain)"},{"n":"Aurius' Reckoning","f":"B","req":55,"cat":"inside_pickup","share":true,"start":"Aurius (after The Medallion of Faith)","ch":"changed"},{"n":"Ramstein","f":"H","req":56,"cat":"pre_run_pickup","share":true,"start":"Nathanos Blightcaller, The Marris Stead (22.2, 63.5)","path":[{"hub":"MARRIS","a":"take","t":"Nathanos Blightcaller"}],"pre":true,"optRoute":true,"note":"Needs The Ranger Lord's Behest and Nathanos's elite kills first."},{"n":"Menethil's Gift","f":"B","req":57,"cat":"pre_run_pickup","share":false,"start":"Leonid Barthalomew the Revered, Light's Hope Chapel","path":[{"hub":"LIGHTSHOPE","a":"take","t":"Leonid Barthalomew"}],"pre":true,"optRoute":true,"note":"Needs the Scholomance Sarkhoff chain first."},{"n":"Menethil's Gift (part 2)","f":"B","req":null,"cat":"inside_pickup","share":false,"start":"Menethil's Gift (object, Baron's room)"},{"n":"Corruption","f":"B","req":50,"cat":"optional","share":true,"start":"Seril Scourgebane, Everlook (61.3, 37.2)","path":[{"hub":"EVERLOOK","a":"take","t":"Seril Scourgebane"}],"ch":"changed","note":"Blacksmithing 250."},{"n":"Dead Man's Plea","f":"B","req":58,"cat":"followup","share":true,"start":"Anthion Harmon, Stratholme entrance (ghost)","status":"unclear","note":"Tier 0.5 (Dungeon Set 2). Listed in Forever data but not confirmed live."},{"n":"Atiesh, the Befouled Greatstaff","f":"B","req":null,"cat":"class","share":false,"start":"Anachronos, Caverns of Time","status":"not_in_forever","cls":"Mage/Priest/Warlock/Druid","note":"Needs Naxxramas."}]},{"id":"scholo","name":"Scholomance","short":"Scholo","range":"58-60","entrance":"CAERDARROW","entranceNote":"Caer Darrow, Western Plaguelands. The door needs a Skeleton Key, a rogue (280 Lockpicking) or a Seaforium charge.","notes":["Only one person needs the Skeleton Key to open the door for the group.","Eva Sarkhoff stands outside the door: step out mid-run to hand in Krastinov and take the next steps.","Shaman: The Darkreaver Menace now needs level 58 (was 60). A second version is marked new in Forever."],"sources":["https://foreverchanges.pro/quests/scholomance","https://foreverchanges.pro/quest/5505/the-key-to-scholomance","https://foreverchanges.pro/quest/5511/the-key-to-scholomance","https://foreverchanges.pro/quest/5341/barov-family-fortune","https://foreverchanges.pro/quest/5343/barov-family-fortune","https://foreverchanges.pro/quest/5382/doctor-theolen-krastinov-the-butcher"],"quests":[{"n":"The Key to Scholomance","f":"A","req":55,"cat":"attunement","share":false,"start":"Alchemist Arbington, Chillwind Camp (42.7, 83.8)","optRoute":true,"note":"Long chain from Commander Ashlam Valorfist at Chillwind Camp. One key holder per group is enough."},{"n":"The Key to Scholomance","f":"H","req":55,"cat":"attunement","share":false,"start":"High Executor Derrington, The Bulwark (83.1, 68.9)","optRoute":true,"note":"Long chain from the Bulwark. One key holder per group is enough."},{"n":"Barov Family Fortune","f":"A","req":52,"cat":"pre_run_pickup","share":true,"start":"Weldon Barov, Chillwind Camp (43.5, 83.7)","path":[{"hub":"CHILLWIND","a":"take","t":"Weldon Barov"}]},{"n":"Barov Family Fortune","f":"H","req":52,"cat":"pre_run_pickup","share":true,"start":"Alexi Barov, The Bulwark (83.1, 71.6)","path":[{"hub":"BULWARK","a":"take","t":"Alexi Barov"}]},{"n":"The Last Barov","f":"A","req":52,"cat":"followup","share":false,"start":"Weldon Barov, Chillwind Camp","note":"Kill Alexi Barov at the Bulwark."},{"n":"The Last Barov","f":"H","req":52,"cat":"followup","share":false,"start":"Alexi Barov, The Bulwark","note":"Kill Weldon Barov at Chillwind Camp."},{"n":"Doctor Theolen Krastinov, the Butcher","f":"B","req":55,"cat":"pre_run_pickup","share":true,"start":"Eva Sarkhoff, Caer Darrow (70.2, 73.7)","path":[{"hub":"CAERDARROW","a":"take","t":"Eva Sarkhoff"}]},{"n":"Krastinov's Bag of Horrors","f":"B","req":55,"cat":"inside_pickup","share":false,"start":"Eva Sarkhoff, outside the door","note":"Step out after Krastinov."},{"n":"Kirtonos the Herald","f":"B","req":55,"cat":"inside_pickup","share":false,"start":"Eva Sarkhoff, outside the door","note":"Only the holder can summon Kirtonos."},{"n":"The Lich, Ras Frostwhisper","f":"B","req":57,"cat":"followup","share":false,"start":"Magistrate Marduke, Caer Darrow","note":"Runs through Stratholme (Menethil's Gift)."},{"n":"Plagued Hatchlings","f":"B","req":55,"cat":"pre_run_pickup","share":true,"start":"Betina Bigglezink, Light's Hope Chapel (71.7, 49.9)","path":[{"hub":"LIGHTSHOPE","a":"take","t":"Betina Bigglezink"}]},{"n":"Healthy Dragon Scale","f":"B","req":55,"cat":"inside_pickup","share":false,"start":"Healthy Dragon Scale (drop from Plagued Hatchlings)"},{"n":"Dawn's Gambit","f":"B","req":57,"cat":"pre_run_pickup","share":false,"start":"Betina Bigglezink, Light's Hope Chapel","path":[{"hub":"LIGHTSHOPE","a":"take","t":"Betina Bigglezink (after Leonid)"}],"pre":true,"optRoute":true,"note":"End of the Tinkee egg chain, which goes through UBRS."},{"n":"The Darkreaver Menace","f":"H","req":58,"cat":"class","share":false,"start":"Sagorne Creststrider, Valley of Wisdom, Orgrimmar (38.7, 35.9)","ch":"changed","cls":"Shaman","note":"Level 58 in Forever (was 60). Starts with Material Assistance."},{"n":"Judgment and Redemption","f":"A","req":60,"cat":"class","share":false,"start":"Lord Grayson Shadowbreaker, Cathedral of Light, Stormwind","cls":"Paladin","note":"Epic mount chain."},{"n":"Imp Delivery","f":"B","req":60,"cat":"class","share":false,"start":"Gorzeeki Wildeyes, Burning Steppes (12.4, 31.6)","cls":"Warlock","note":"Dreadsteed chain."},{"n":"The Left Piece of Lord Valthalak's Amulet (Kormok)","f":"B","req":58,"cat":"followup","share":false,"start":"Bodley, Blackrock Mountain","status":"unclear","note":"Tier 0.5 (Dungeon Set 2). Listed in Forever data but not confirmed live."}]},{"id":"ubrs","name":"Upper Blackrock Spire","short":"UBRS","range":"59-60","entrance":"BRM","entranceNote":"Blackrock Mountain. One person must hold the Seal of Ascension ring to open the door.","notes":["Blackhand's Command (Blackwing Lair) and Eye of the Emberseer (Molten Core) are in the data, but neither raid is in Forever.","Onyxia's Lair is in Forever, so the Drakefire Amulet chains matter for both factions.","Finkle Einhorn now needs level 57. The Demon Forge plans now need Blacksmithing 260."],"sources":["https://foreverchanges.pro/quests/blackrock-spire","https://foreverchanges.pro/quest/6502/drakefire-amulet","https://foreverchanges.pro/quest/6602/blood-of-the-black-dragon-champion","https://foreverchanges.pro/quest/4735/egg-collection","https://foreverchanges.pro/quest/7761/blackhands-command","https://foreverchanges.pro/quest/6821/eye-of-the-emberseer"],"quests":[{"n":"Mayara Brightwing","f":"A","req":57,"cat":"optional","share":null,"start":"Count Remington Ridgewell, Stormwind Keep","path":[{"hub":"SW","a":"take","t":"Count Remington Ridgewell, Stormwind Keep"},{"hub":"MORGANS","a":"turnin","t":"Mayara Brightwing"}],"note":"Breadcrumb. One guide says it's required for Doomrigger's Clasp."},{"n":"Doomrigger's Clasp","f":"A","req":57,"cat":"pre_run_pickup","share":true,"start":"Mayara Brightwing, Morgan's Vigil (84.8, 69.1)","path":[{"hub":"MORGANS","a":"take","t":"Mayara Brightwing"}]},{"n":"Delivery to Ridgewell","f":"A","req":57,"cat":"followup","share":null,"start":"Mayara Brightwing, Morgan's Vigil"},{"n":"General Drakkisath's Demise","f":"A","req":55,"cat":"pre_run_pickup","share":null,"start":"Marshal Maxwell, Morgan's Vigil (84.7, 69.0)","path":[{"hub":"MORGANS","a":"take","t":"Marshal Maxwell"}],"pre":true,"note":"Needs General Drakkisath's Command (LBRS) turned in."},{"n":"Drakefire Amulet","f":"A","req":50,"cat":"attunement","share":true,"start":"Haleh, Mazthoril, Winterspring (54.5, 51.2)","path":[{"hub":"HALEH","a":"take","t":"Haleh"}],"pre":true,"optRoute":true,"ch":"changed","note":"Alliance Onyxia key. Last step of the Windsor chain (BRD) and The Great Masquerade."},{"n":"For The Horde!","f":"H","req":55,"cat":"attunement","share":false,"start":"Thrall, Grommash Hold, Orgrimmar","path":[{"hub":"ORG","a":"take","t":"Thrall"}],"pre":true,"optRoute":true,"ch":"changed","note":"Needs Warlord's Command (LBRS) and Eitrigg's Wisdom."},{"n":"Oculus Illusions","f":"H","req":55,"cat":"followup","share":null,"start":"Myranda the Hag, Western Plaguelands","note":"Horde Onyxia chain, after For The Horde!"},{"n":"Blood of the Black Dragon Champion","f":"H","req":55,"cat":"followup","share":true,"start":"Rexxar, Desolace/Feralas road","note":"Horde Onyxia key, end of the chain."},{"n":"The Darkstone Tablet","f":"H","req":57,"cat":"pre_run_pickup","share":true,"start":"Shadowmage Vivian Lagrave, Kargath","path":[{"hub":"KARGATH","a":"take","t":"Shadowmage Vivian Lagrave"}]},{"n":"Vivian Lagrave and the Darkstone Tablet","f":"H","req":57,"cat":"optional","share":null,"start":"Apothecary Zinge, Undercity","path":[{"hub":"UC","a":"take","t":"Apothecary Zinge, The Apothecarium"},{"hub":"KARGATH","a":"turnin","t":"Shadowmage Vivian Lagrave"}],"note":"Breadcrumb."},{"n":"Egg Freezing","f":"B","req":57,"cat":"pre_run_pickup","share":false,"start":"Tinkee Steamboil, Flame Crest (65.2, 24.0)","path":[{"hub":"FLAMECREST","a":"take","t":"Tinkee Steamboil: Broodling Essence"},{"hub":"BS_FIELD","a":"do","t":"Collect broodling essence from dragonkin","work":8},{"hub":"FLAMECREST","a":"turnin","t":"Tinkee: turn in, take Felnok Steelspring"},{"hub":"EVERLOOK","a":"do","t":"Felnok Steelspring: take Chillwind Horns"},{"hub":"EVERLOOK","a":"do","t":"Kill Chillwind Chimaeras for the horns, return to Felnok","work":10},{"hub":"FLAMECREST","a":"turnin","t":"Tinkee: Return to Tinkee, take Egg Freezing"}],"pre":true,"note":"Some guides call the Everlook breadcrumb optional; the chain order here follows the Forever tracker."},{"n":"Egg Collection","f":"B","req":57,"cat":"followup","share":false,"start":"Tinkee Steamboil, Flame Crest","note":"Leads to Dawn's Gambit (Scholomance)."},{"n":"The Demon Forge","f":"B","req":55,"cat":"pre_run_pickup","share":null,"start":"Lorax, Winterspring","path":[{"hub":"LORAX","a":"take","t":"Lorax: listen to Lorax's Tale, take The Demon Forge"}],"ch":"changed","note":"Plans now need Blacksmithing 260. One source says warriors and paladins only (unverified)."},{"n":"The Matron Protectorate","f":"B","req":57,"cat":"inside_pickup","share":false,"start":"Awbee (inside)","note":"Leads to Haleh in Winterspring."},{"n":"Finkle Einhorn, At Your Service!","f":"B","req":57,"cat":"inside_pickup","share":false,"start":"Finkle Einhorn, after skinning The Beast","ch":"changed","note":"Only the skinner gets it."},{"n":"Mea Culpa, Lord Valthalak","f":"B","req":58,"cat":"followup","share":false,"start":"Bodley, Blackrock Mountain","status":"unclear","note":"Tier 0.5 (Dungeon Set 2). Listed in Forever data but not confirmed live."},{"n":"Blackhand's Command","f":"B","req":55,"cat":"attunement","share":false,"start":"Item drop in LBRS","status":"not_in_forever","note":"Blackwing Lair isn't in Forever."},{"n":"Eye of the Emberseer","f":"B","req":55,"cat":"attunement","share":true,"start":"Duke Hydraxis, Azshara","status":"not_in_forever","note":"Molten Core chain; not in Forever."}]}]};
+  var H = DATA.hubs, P = window.Planner;
+  var CLASSES = [["warrior","Warrior"],["paladin","Paladin"],["hunter","Hunter"],["rogue","Rogue"],["priest","Priest"],["shaman","Shaman"],["mage","Mage"],["warlock","Warlock"],["druid","Druid"]];
+  var CITY = { A: [["SW","Stormwind"],["IF","Ironforge"],["DARN","Darnassus"]], H: [["ORG","Orgrimmar"],["UC","Undercity"],["TB","Thunder Bluff"]] };
+  var KEY = "forever-planner-setup";
+  var state = { faction: "A", start: "SW", opt: false, players: [{ name: "Player 1", cls: "mage", eng: "none" }, { name: "Player 2", cls: "warrior", eng: "none" }, { name: "Player 3", cls: "priest", eng: "none" }] };
+  try { var saved = JSON.parse(localStorage.getItem(KEY) || "null"); if (saved && saved.players && saved.players.length) state = saved; } catch (e) {}
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function mins(m) { return m < 1 ? "&lt;1 min" : "~" + Math.round(m) + " min"; }
+  function hubName(id) { var h = H[id]; if (!h) return id; return h.name === h.zone ? h.name : h.name + ", " + h.zone; }
+  function current() { var id = (location.hash || "").slice(1); return DATA.dungeons.find(function (d) { return d.id === id; }) || DATA.dungeons[0]; }
+
+  // ---------- setup UI ----------
+  var party = document.getElementById("party");
+  function renderParty() {
+    party.innerHTML = "";
+    state.players.forEach(function (p, i) {
+      var row = document.createElement("div");
+      row.className = "prow";
+      row.innerHTML =
+        '<span class="pnum">' + (i + 1) + '</span>' +
+        '<input type="text" id="pn' + i + '" aria-label="Player ' + (i + 1) + ' name" value="' + esc(p.name) + '">' +
+        '<select id="pc' + i + '" aria-label="Player ' + (i + 1) + ' class">' + CLASSES.map(function (c) { return '<option value="' + c[0] + '"' + (p.cls === c[0] ? " selected" : "") + ">" + c[1] + "</option>"; }).join("") + "</select>" +
+        '<select class="eng" id="pe' + i + '" aria-label="Player ' + (i + 1) + ' engineering">' +
+          '<option value="none"' + (p.eng === "none" ? " selected" : "") + '>No teleport gadget</option>' +
+          '<option value="gnomish"' + (p.eng === "gnomish" ? " selected" : "") + '>Gnomish: Gadgetzan</option>' +
+          '<option value="goblin"' + (p.eng === "goblin" ? " selected" : "") + '>Goblin: Everlook</option></select>' +
+        '<button type="button" class="iconbtn" id="pr' + i + '" aria-label="Remove player ' + (i + 1) + '"' + (state.players.length < 2 ? " disabled" : "") + '>&times;</button>';
+      party.appendChild(row);
+      row.querySelector("input").addEventListener("change", function (e) { p.name = e.target.value.trim() || ("Player " + (i + 1)); save(); render(); });
+      row.querySelector("#pc" + i).addEventListener("change", function (e) { p.cls = e.target.value; save(); render(); });
+      row.querySelector("#pe" + i).addEventListener("change", function (e) { p.eng = e.target.value; save(); render(); });
+      row.querySelector("#pr" + i).addEventListener("click", function () { state.players.splice(i, 1); save(); renderParty(); render(); });
+    });
+    document.getElementById("addp").disabled = state.players.length >= 5;
+  }
+  document.getElementById("addp").addEventListener("click", function () {
+    if (state.players.length >= 5) return;
+    state.players.push({ name: "Player " + (state.players.length + 1), cls: "warrior", eng: "none" });
+    save(); renderParty(); render();
+  });
+  function renderFaction() {
+    document.body.classList.toggle("horde", state.faction === "H");
+    ["A", "H"].forEach(function (f) { document.getElementById("f-" + f).setAttribute("aria-pressed", String(state.faction === f)); });
+    var sel = document.getElementById("start");
+    if (!CITY[state.faction].some(function (c) { return c[0] === state.start; })) state.start = CITY[state.faction][0][0];
+    sel.innerHTML = CITY[state.faction].map(function (c) { return '<option value="' + c[0] + '"' + (c[0] === state.start ? " selected" : "") + ">" + c[1] + "</option>"; }).join("");
+  }
+  ["A", "H"].forEach(function (f) {
+    document.getElementById("f-" + f).addEventListener("click", function () { state.faction = f; save(); renderFaction(); render(); });
+  });
+  document.getElementById("start").addEventListener("change", function (e) { state.start = e.target.value; save(); render(); });
+  var optBox = document.getElementById("opt");
+  optBox.checked = !!state.opt;
+  optBox.addEventListener("change", function () { state.opt = optBox.checked; save(); render(); });
+
+  // ---------- dungeon strip ----------
+  var strip = document.getElementById("strip");
+  function renderStrip() {
+    var cur = current();
+    strip.innerHTML = DATA.dungeons.map(function (d) {
+      var L = P.levelInfo(d, state.faction);
+      return '<button type="button" class="chip" data-id="' + d.id + '"' + (d.id === cur.id ? ' aria-current="true"' : "") + ">" +
+        "<b>" + esc(d.short) + "</b><span>" + (L.firstRun.lvl ? "All quests at " + L.firstRun.lvl : "Lv " + esc(d.range)) + "</span>" +
+        (d.isNew ? '<span class="new">New in Forever</span>' : "<span>" + esc(d.range) + "</span>") + "</button>";
+    }).join("");
+    strip.querySelectorAll(".chip").forEach(function (b) { b.addEventListener("click", function () { location.hash = b.dataset.id; }); });
+  }
+
+  // ---------- plan view ----------
+  function actLine(a) {
+    var verb = a.a === "take" ? "Take" : a.a === "turnin" ? "Turn in" : "Do";
+    var extra = a.t ? ' <span class="muted">· ' + esc(a.t) + "</span>" : "";
+    var cls = a.cls ? ' <span class="tag cls">' + esc(a.cls) + " only</span>" : "";
+    return '<li><span class="verb">' + verb + "</span> " + esc(a.q) + cls + extra + "</li>";
+  }
+  function viaTag(tr) {
+    var magic = /Teleport|portal|summon|Transporter|Ripper|Hearth/i.test(tr.via);
+    return '<span class="via' + (magic ? " magic" : "") + '">' + esc(tr.via) + "</span>";
+  }
+  function stopsHtml(visits, endLabel, final) {
+    var out = visits.map(function (v) {
+      var tr = v.travel.min > 0 ? viaTag(v.travel) + ' <span class="small muted">' + mins(v.travel.min) + "</span>" : '<span class="via">Already here</span>';
+      return '<li><div class="stop"><div class="where"><b>' + esc(hubName(v.hub)) + "</b> " + tr + '</div><ul class="acts">' + v.acts.map(function (a, i) { return [a.a === "turnin" ? 0 : 1, i, a]; }).sort(function (x, y) { return x[0] - y[0] || x[1] - y[1]; }).map(function (x) { return actLine(x[2]); }).join("") + "</ul></div></li>";
+    }).join("");
+    if (endLabel) {
+      var tr2 = final && final.min > 0 ? viaTag(final) + ' <span class="small muted">' + mins(final.min) + "</span>" : "";
+      out += '<li class="end"><div class="stop"><div class="where"><b>' + esc(endLabel) + "</b> " + tr2 + "</div></div></li>";
+    }
+    return '<ol class="stops">' + out + "</ol>";
+  }
+  function qList(qs, empty) {
+    if (!qs.length) return '<p class="small muted">' + empty + "</p>";
+    return "<ul>" + qs.map(function (q) {
+      return "<li><b>" + esc(q.n) + "</b>" + (q.cls ? ' <span class="tag cls">' + esc(q.cls) + "</span>" : "") + ' <span class="muted">· ' + esc(q.start) + "</span>" + (q.note ? '<br><span class="small muted">' + esc(q.note) + "</span>" : "") + "</li>";
+    }).join("") + "</ul>";
+  }
+  var CAT = { pre_run_pickup: "Pick up first", inside_pickup: "Inside", followup: "Follow-up", optional: "Optional", attunement: "Attunement / key", "class": "Class" };
+
+  function render() {
+    renderStrip();
+    var d = current(), f = state.faction;
+    var L = P.levelInfo(d, f);
+    var plan = P.plan(H, d, { faction: f, players: state.players, start: state.start, includeOptional: state.opt });
+    var mine = d.quests.filter(function (q) { return P.forFaction(q, f); });
+    var live = mine.filter(P.isLive);
+    var html = "";
+
+    html += '<div class="dhead"><span class="eyebrow">' + esc(d.aka || "Dungeon") + " · level " + esc(d.range) + (d.isNew ? " · new in Forever" : "") + "</span>" +
+      "<h2>" + esc(d.name) + "</h2><p class=\"muted small\">" + esc(d.entranceNote || "") + "</p></div>";
+
+    html += '<div class="levels">' +
+      '<div class="lvl key"><span class="label">Do it all in one run from</span><span class="n">' + (L.firstRun.lvl || "–") + '</span><span class="t">Highest level needed to accept everything you can carry into your first run' + (L.firstRun.q ? " (" + esc(L.firstRun.q) + ")" : "") + ".</span></div>" +
+      '<div class="lvl"><span class="label">Whole quest set</span><span class="n">' + (L.full.lvl || "–") + '</span><span class="t">Including follow-ups and quests that need an earlier chain.</span></div>' +
+      (L.cls.lvl ? '<div class="lvl"><span class="label">Class quests</span><span class="n">' + L.cls.lvl + '</span><span class="t">' + esc(L.cls.q) + "</span></div>" : "") +
+      "</div>";
+
+    // summary
+    var who = state.players.length === 1 ? "solo" : state.players.length + " players";
+    var sum = '<div class="summary">';
+    if (!plan.tasks) {
+      sum += "<b>Nothing to pick up outside.</b><span>Head straight to " + esc(hubName(d.entrance)) + ": " + mins(plan.total) + " from " + esc(H[state.start].name) + ".</span>";
+    } else if (plan.mode === "split") {
+      sum += "<b>Split up: " + mins(plan.total) + " total</b><span>" + who + ". Staying together would take " + mins(plan.compare) + ".</span>";
+    } else {
+      sum += "<b>" + (state.players.length > 1 ? "Stay together: " : "") + mins(plan.total) + " total</b><span>" + who + (plan.compare != null && state.players.length > 1 ? ". Splitting up wouldn't save time here." : ".") + "</span>";
+    }
+    html += sum + "</div>";
+
+    if (plan.mode === "split") {
+      html += '<section><h3>Split up</h3><p class="small muted">Each person grabs their pickups, then heads to <b>' + esc(hubName(plan.meet)) + "</b>." + (state.players.some(function (p) { return p.cls === "mage"; }) ? " The mage opens a portal for each person before you split." : "") + '</p><div class="players">' +
+        plan.players.map(function (r) {
+          var cl = CLASSES.find(function (c) { return c[0] === r.player.cls; });
+          var body = r.visits.length ? stopsHtml(r.visits, "Meet at " + hubName(plan.meet), r.toMeet)
+            : '<p class="small muted">No pickups. Go to the meeting point.</p>' + stopsHtml([], "Meet at " + hubName(plan.meet), r.toMeet);
+          return '<div class="pcard"><h3>' + esc(r.player.name) + ' <span class="tag cls">' + esc(cl ? cl[1] : "") + "</span>" + (r.player.eng !== "none" ? '<span class="tag cls">' + esc(r.player.eng) + "</span>" : "") +
+            '</h3><span class="small muted">Arrives after ' + mins(r.arrive) + "</span>" + body + "</div>";
+        }).join("") + "</div>";
+      var byFrom = {};
+      plan.shares.forEach(function (s) { (byFrom[s.from] = byFrom[s.from] || []).push(s.q); });
+      html += '<div class="shares"><h3>When you meet, share these</h3><ul>' + Object.keys(byFrom).map(function (k) {
+        return "<li><b>" + esc(k) + "</b> shares " + byFrom[k].map(esc).join(", ") + "</li>";
+      }).join("") + '</ul><p class="small muted">Everyone needs to meet the quest level to accept a share.</p></div></section>';
+    }
+
+    if (plan.tasks) {
+      var gv = plan.group.visits;
+      var title = plan.mode === "split" ? "Then together" : (state.players.length > 1 ? "Route, all together" : "Route");
+      html += "<section><h3>" + title + "</h3>" +
+        (gv.length || plan.mode !== "split" ? stopsHtml(gv, "Enter " + d.short + " at " + hubName(d.entrance), plan.group.final) : '<p class="small muted">Nothing left to do together. Go in.</p>') + "</section>";
+    }
+
+    // reference lists
+    var inside = live.filter(function (q) { return q.cat === "inside_pickup"; });
+    var follow = live.filter(function (q) { return q.cat === "followup" || ((q.optRoute || (q.pre && !P.pathOf(q, f))) && q.cat !== "class" && q.cat !== "optional" && q.cat !== "inside_pickup"); });
+    var opts = live.filter(function (q) { return (q.cat === "optional" || q.cat === "class") && !(state.opt && P.routable(q, f, true, state.players.map(function (p) { return p.cls; }))); });
+    var dead = mine.filter(function (q) { return !P.isLive(q); });
+    html += '<div class="cols">' +
+      '<div class="box"><h3>Picked up inside</h3>' + qList(inside, "None.") + "</div>" +
+      '<div class="box"><h3>Follow-ups and earlier chains</h3>' + qList(follow, "None.") + "</div>" +
+      '<div class="box"><h3>' + (state.opt ? "Optional, not routed for this party" : "Optional (tick the box above to route them)") + "</h3>" + qList(opts, "None.") + "</div>" +
+      (dead.length ? '<div class="box"><h3>Not in Forever or unclear</h3>' + qList(dead, "") + "</div>" : "") +
+      "</div>";
+
+    // quest table
+    html += "<section><h3>Every quest (" + (f === "A" ? "Alliance" : "Horde") + ' view)</h3><div class="tbl"><table><thead><tr><th>Quest</th><th>Lvl</th><th>Starts at</th><th>Share</th><th>Type</th><th>Forever</th></tr></thead><tbody>' +
+      mine.slice().sort(function (a, b) { return (a.req || 0) - (b.req || 0); }).map(function (q) {
+        var share = q.share === true ? '<span class="tag ok">Yes</span>' : q.share === false ? '<span class="tag no">No</span>' : '<span class="tag no">?</span>';
+        var fv = !P.isLive(q) ? '<span class="tag no">' + (q.status === "unclear" ? "Unclear" : "Not in game") + "</span>" : q.ch === "new" ? '<span class="tag new">New</span>' : q.ch === "changed" ? '<span class="tag ch">Changed</span>' : "";
+        return '<tr class="' + (P.isLive(q) ? "" : "dead") + '"><td><b>' + esc(q.n) + "</b>" + (q.f !== "B" ? ' <span class="small muted">(' + (q.f === "A" ? "Alliance" : "Horde") + ")</span>" : "") + (q.note ? '<br><span class="small muted">' + esc(q.note) + "</span>" : "") + '</td><td class="num">' + (q.req || "–") + "</td><td>" + esc(q.start) + "</td><td>" + share + "</td><td>" + esc(CAT[q.cat] || q.cat) + (q.cls ? " · " + esc(q.cls) : "") + "</td><td>" + fv + "</td></tr>";
+      }).join("") + "</tbody></table></div></section>";
+
+    html += '<section><h3>Notes</h3><ul class="notes small">' + d.notes.map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + "</ul>" +
+      '<p class="small muted">Sources: ' + d.sources.map(function (u) { return '<a href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(u.replace(/^https?:\/\/(www\.)?/, "")) + "</a>"; }).join(" · ") + "</p></section>";
+
+    document.getElementById("view").innerHTML = html;
+  }
+
+  window.addEventListener("hashchange", render);
+  renderParty(); renderFaction(); render();
+})();
+</script>
+
+</body>
+</html>

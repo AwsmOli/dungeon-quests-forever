@@ -1,0 +1,361 @@
+<title>Forever Quest Planner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: setup panel, dungeon strip, then the plan for the chosen dungeon (players side by side, then the group route), then reference lists. */
+:root {
+  --bg: #f1f2f4; --surface: #ffffff; --sunk: #e8eaee; --fg: #1b1e23; --muted: #5a6170; --line: #d7dae0;
+  --ember: #c2501d; --ember-soft: #fbe8dd;
+  --alli: #2b59a0; --alli-soft: #e2eaf7; --horde: #a2302a; --horde-soft: #f6e1df;
+  --ok: #2b7745; --ok-soft: #dff1e5; --warn: #8a6100; --warn-soft: #faefd2;
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161a; --surface: #1c1f24; --sunk: #24282e; --fg: #e7e9ed; --muted: #9aa1ac; --line: #30343b;
+    --ember: #f08a52; --ember-soft: #3a2418; --alli: #84aae6; --alli-soft: #1d2a3f; --horde: #ec8b84; --horde-soft: #3a1f1d;
+    --ok: #7ccf95; --ok-soft: #1a3223; --warn: #e5ba59; --warn-soft: #352b14; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14161a; --surface: #1c1f24; --sunk: #24282e; --fg: #e7e9ed; --muted: #9aa1ac; --line: #30343b;
+  --ember: #f08a52; --ember-soft: #3a2418; --alli: #84aae6; --alli-soft: #1d2a3f; --horde: #ec8b84; --horde-soft: #3a1f1d;
+  --ok: #7ccf95; --ok-soft: #1a3223; --warn: #e5ba59; --warn-soft: #352b14; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 64px;
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; line-height: 1.2; text-wrap: balance; }
+h1 { font-size: 2rem; letter-spacing: -0.01em; }
+h2 { font-size: 1.4rem; }
+h3 { font-size: 1.02rem; }
+p { margin: 0; max-width: 72ch; }
+.eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ember); font-weight: 600; }
+.muted { color: var(--muted); }
+.small { font-size: 0.88rem; }
+.coord, .mono { font-family: var(--font-mono); font-size: 0.82em; }
+header { display: flex; flex-direction: column; gap: 8px; }
+:root { --fac: var(--alli); --fac-soft: var(--alli-soft); }
+body.horde { --fac: var(--horde); --fac-soft: var(--horde-soft); }
+
+/* setup */
+.setup { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px 28px; }
+.field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.label { font: 600 0.72rem var(--font-body); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; align-self: flex-start; }
+.seg button { font: 600 0.92rem var(--font-display); padding: 8px 18px; border: 0; background: var(--surface); color: var(--muted); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--fac); color: var(--surface); }
+.party { display: flex; flex-direction: column; gap: 8px; }
+.prow { display: grid; grid-template-columns: 26px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 30px; gap: 8px; align-items: center; }
+.pnum { font: 700 0.85rem var(--font-display); width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--fac-soft); color: var(--fac); }
+input[type="text"], select { font: 0.9rem var(--font-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--fg); width: 100%; min-width: 0; }
+.iconbtn { border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 7px; height: 32px; cursor: pointer; font-size: 1rem; }
+.btn { font: 600 0.88rem var(--font-body); border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 7px; padding: 7px 12px; cursor: pointer; align-self: flex-start; }
+.btn:disabled, .iconbtn:disabled { opacity: 0.4; cursor: default; }
+.check { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start; font-size: 0.9rem; cursor: pointer; }
+.check input { margin: 3px 0 0; accent-color: var(--fac); }
+button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--ember); outline-offset: 1px; }
+
+/* dungeon strip */
+.strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.chip { flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 12px; cursor: pointer; color: var(--fg); min-width: 92px; }
+.chip b { font: 700 0.95rem var(--font-display); }
+.chip span { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.chip[aria-current="true"] { border-color: var(--fac); box-shadow: inset 0 0 0 1px var(--fac); }
+.chip .new { color: var(--ember); font-weight: 600; }
+
+/* dungeon head */
+.dhead { display: flex; flex-direction: column; gap: 10px; }
+.levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.lvl { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.lvl .n { font: 700 1.9rem var(--font-display); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.lvl.key { border-color: var(--fac); }
+.lvl.key .n { color: var(--fac); }
+.lvl .t { font-size: 0.82rem; color: var(--muted); }
+
+.summary { background: var(--fac-soft); border-radius: 10px; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+.summary b { font-family: var(--font-display); font-size: 1.05rem; }
+
+.players { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.pcard { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.pcard h3 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.tag { font: 600 0.68rem var(--font-body); text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 4px; white-space: nowrap; }
+.tag.cls { background: var(--sunk); color: var(--muted); }
+.tag.new { background: var(--ember-soft); color: var(--ember); }
+.tag.ch { background: var(--warn-soft); color: var(--warn); }
+.tag.ok { background: var(--ok-soft); color: var(--ok); }
+.tag.no { background: var(--sunk); color: var(--muted); }
+
+ol.stops { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; counter-reset: s; }
+ol.stops > li { counter-increment: s; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; position: relative; padding-bottom: 14px; }
+ol.stops > li::before { content: counter(s); width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font: 700 0.82rem var(--font-display); border: 2px solid var(--fac); color: var(--fac); background: var(--surface); z-index: 1; }
+ol.stops > li:not(:last-child)::after { content: ""; position: absolute; left: 12px; top: 28px; bottom: 0; width: 2px; background: var(--line); }
+ol.stops > li.end::before { content: "\2192"; border-style: dashed; }
+.stop { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-top: 2px; }
+.where { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.where b { font-family: var(--font-display); }
+.via { font: 600 0.7rem var(--font-body); text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 7px; border-radius: 4px; background: var(--fac-soft); color: var(--fac); white-space: nowrap; }
+.via.magic { background: var(--ember-soft); color: var(--ember); }
+.acts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 0.9rem; }
+.acts li { min-width: 0; }
+.verb { font-weight: 600; }
+.shares { background: var(--surface); border: 1px dashed var(--fac); border-radius: 10px; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
+.shares ul { margin: 0; padding-left: 18px; }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.box ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; font-size: 0.9rem; }
+
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 0.86rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 0.7rem var(--font-body); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); background: var(--surface); }
+td.num { font-variant-numeric: tabular-nums; font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+tr.dead td { color: var(--muted); }
+section { display: flex; flex-direction: column; gap: 12px; }
+.notes { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+a { color: var(--ember); overflow-wrap: anywhere; }
+.foot { font-size: 0.82rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+
+@media (max-width: 760px) {
+  .setup { grid-template-columns: 1fr; }
+  .prow { grid-template-columns: 24px minmax(0, 1fr) minmax(0, 1fr) 30px; }
+  .prow .eng { grid-column: 2 / 4; }
+  h1 { font-size: 1.6rem; }
+}
+@media (prefers-reduced-motion: no-preference) { .chip, .seg button { transition: background-color .15s, box-shadow .15s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">WoW Forever · Dungeon quests</span>
+    <h1>Forever Quest Planner</h1>
+    <p class="muted">Pick your faction, your party and who can teleport. The planner works out the quickest way to grab every quest before the run. When you split up, it says who goes where and who shares what when you meet.</p>
+  </header>
+
+  <div class="setup" id="setup">
+    <div class="field">
+      <span class="label">Party</span>
+      <div class="party" id="party"></div>
+      <button type="button" class="btn" id="addp">Add player</button>
+    </div>
+    <div class="field" style="gap:16px">
+      <div class="field">
+        <span class="label">Faction</span>
+        <div class="seg" role="group" aria-label="Faction">
+          <button type="button" id="f-A" data-f="A">Alliance</button>
+          <button type="button" id="f-H" data-f="H">Horde</button>
+        </div>
+      </div>
+      <div class="field">
+        <label class="label" for="start">Everyone starts in</label>
+        <select id="start"></select>
+      </div>
+      <label class="check" for="opt"><input type="checkbox" id="opt"><span>Include optional quests: breadcrumbs, profession and class quests, and quests that need a long chain first</span></label>
+    </div>
+  </div>
+
+  <nav class="strip" id="strip" aria-label="Dungeons"></nav>
+
+  <div id="view" class="wrap" style="gap:24px"></div>
+
+  <div class="foot">
+    <p>Travel times are rough estimates from a simple map model (flight paths, boats and zeppelins, teleports, one hearthstone per route). They're for comparing plans, not for a stopwatch.</p>
+    <p>Quest data comes from Forever trackers that read the live game data (build 1.60.1), with Classic details filled in where the trackers are blank. NPC positions are mostly Classic's. Check anything marked "unclear" in game.</p>
+  </div>
+</div>
+
+<script>/*__ENGINE__*/</script>
+<script>
+(function () {
+  var DATA = /*__DATA__*/;
+  var H = DATA.hubs, P = window.Planner;
+  var CLASSES = [["warrior","Warrior"],["paladin","Paladin"],["hunter","Hunter"],["rogue","Rogue"],["priest","Priest"],["shaman","Shaman"],["mage","Mage"],["warlock","Warlock"],["druid","Druid"]];
+  var CITY = { A: [["SW","Stormwind"],["IF","Ironforge"],["DARN","Darnassus"]], H: [["ORG","Orgrimmar"],["UC","Undercity"],["TB","Thunder Bluff"]] };
+  var KEY = "forever-planner-setup";
+  var state = { faction: "A", start: "SW", opt: false, players: [{ name: "Player 1", cls: "mage", eng: "none" }, { name: "Player 2", cls: "warrior", eng: "none" }, { name: "Player 3", cls: "priest", eng: "none" }] };
+  try { var saved = JSON.parse(localStorage.getItem(KEY) || "null"); if (saved && saved.players && saved.players.length) state = saved; } catch (e) {}
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function mins(m) { return m < 1 ? "&lt;1 min" : "~" + Math.round(m) + " min"; }
+  function hubName(id) { var h = H[id]; if (!h) return id; return h.name === h.zone ? h.name : h.name + ", " + h.zone; }
+  function current() { var id = (location.hash || "").slice(1); return DATA.dungeons.find(function (d) { return d.id === id; }) || DATA.dungeons[0]; }
+
+  // ---------- setup UI ----------
+  var party = document.getElementById("party");
+  function renderParty() {
+    party.innerHTML = "";
+    state.players.forEach(function (p, i) {
+      var row = document.createElement("div");
+      row.className = "prow";
+      row.innerHTML =
+        '<span class="pnum">' + (i + 1) + '</span>' +
+        '<input type="text" id="pn' + i + '" aria-label="Player ' + (i + 1) + ' name" value="' + esc(p.name) + '">' +
+        '<select id="pc' + i + '" aria-label="Player ' + (i + 1) + ' class">' + CLASSES.map(function (c) { return '<option value="' + c[0] + '"' + (p.cls === c[0] ? " selected" : "") + ">" + c[1] + "</option>"; }).join("") + "</select>" +
+        '<select class="eng" id="pe' + i + '" aria-label="Player ' + (i + 1) + ' engineering">' +
+          '<option value="none"' + (p.eng === "none" ? " selected" : "") + '>No teleport gadget</option>' +
+          '<option value="gnomish"' + (p.eng === "gnomish" ? " selected" : "") + '>Gnomish: Gadgetzan</option>' +
+          '<option value="goblin"' + (p.eng === "goblin" ? " selected" : "") + '>Goblin: Everlook</option></select>' +
+        '<button type="button" class="iconbtn" id="pr' + i + '" aria-label="Remove player ' + (i + 1) + '"' + (state.players.length < 2 ? " disabled" : "") + '>&times;</button>';
+      party.appendChild(row);
+      row.querySelector("input").addEventListener("change", function (e) { p.name = e.target.value.trim() || ("Player " + (i + 1)); save(); render(); });
+      row.querySelector("#pc" + i).addEventListener("change", function (e) { p.cls = e.target.value; save(); render(); });
+      row.querySelector("#pe" + i).addEventListener("change", function (e) { p.eng = e.target.value; save(); render(); });
+      row.querySelector("#pr" + i).addEventListener("click", function () { state.players.splice(i, 1); save(); renderParty(); render(); });
+    });
+    document.getElementById("addp").disabled = state.players.length >= 5;
+  }
+  document.getElementById("addp").addEventListener("click", function () {
+    if (state.players.length >= 5) return;
+    state.players.push({ name: "Player " + (state.players.length + 1), cls: "warrior", eng: "none" });
+    save(); renderParty(); render();
+  });
+  function renderFaction() {
+    document.body.classList.toggle("horde", state.faction === "H");
+    ["A", "H"].forEach(function (f) { document.getElementById("f-" + f).setAttribute("aria-pressed", String(state.faction === f)); });
+    var sel = document.getElementById("start");
+    if (!CITY[state.faction].some(function (c) { return c[0] === state.start; })) state.start = CITY[state.faction][0][0];
+    sel.innerHTML = CITY[state.faction].map(function (c) { return '<option value="' + c[0] + '"' + (c[0] === state.start ? " selected" : "") + ">" + c[1] + "</option>"; }).join("");
+  }
+  ["A", "H"].forEach(function (f) {
+    document.getElementById("f-" + f).addEventListener("click", function () { state.faction = f; save(); renderFaction(); render(); });
+  });
+  document.getElementById("start").addEventListener("change", function (e) { state.start = e.target.value; save(); render(); });
+  var optBox = document.getElementById("opt");
+  optBox.checked = !!state.opt;
+  optBox.addEventListener("change", function () { state.opt = optBox.checked; save(); render(); });
+
+  // ---------- dungeon strip ----------
+  var strip = document.getElementById("strip");
+  function renderStrip() {
+    var cur = current();
+    strip.innerHTML = DATA.dungeons.map(function (d) {
+      var L = P.levelInfo(d, state.faction);
+      return '<button type="button" class="chip" data-id="' + d.id + '"' + (d.id === cur.id ? ' aria-current="true"' : "") + ">" +
+        "<b>" + esc(d.short) + "</b><span>" + (L.firstRun.lvl ? "All quests at " + L.firstRun.lvl : "Lv " + esc(d.range)) + "</span>" +
+        (d.isNew ? '<span class="new">New in Forever</span>' : "<span>" + esc(d.range) + "</span>") + "</button>";
+    }).join("");
+    strip.querySelectorAll(".chip").forEach(function (b) { b.addEventListener("click", function () { location.hash = b.dataset.id; }); });
+  }
+
+  // ---------- plan view ----------
+  function actLine(a) {
+    var verb = a.a === "take" ? "Take" : a.a === "turnin" ? "Turn in" : "Do";
+    var extra = a.t ? ' <span class="muted">· ' + esc(a.t) + "</span>" : "";
+    var cls = a.cls ? ' <span class="tag cls">' + esc(a.cls) + " only</span>" : "";
+    return '<li><span class="verb">' + verb + "</span> " + esc(a.q) + cls + extra + "</li>";
+  }
+  function viaTag(tr) {
+    var magic = /Teleport|portal|summon|Transporter|Ripper|Hearth/i.test(tr.via);
+    return '<span class="via' + (magic ? " magic" : "") + '">' + esc(tr.via) + "</span>";
+  }
+  function stopsHtml(visits, endLabel, final) {
+    var out = visits.map(function (v) {
+      var tr = v.travel.min > 0 ? viaTag(v.travel) + ' <span class="small muted">' + mins(v.travel.min) + "</span>" : '<span class="via">Already here</span>';
+      return '<li><div class="stop"><div class="where"><b>' + esc(hubName(v.hub)) + "</b> " + tr + '</div><ul class="acts">' + v.acts.map(function (a, i) { return [a.a === "turnin" ? 0 : 1, i, a]; }).sort(function (x, y) { return x[0] - y[0] || x[1] - y[1]; }).map(function (x) { return actLine(x[2]); }).join("") + "</ul></div></li>";
+    }).join("");
+    if (endLabel) {
+      var tr2 = final && final.min > 0 ? viaTag(final) + ' <span class="small muted">' + mins(final.min) + "</span>" : "";
+      out += '<li class="end"><div class="stop"><div class="where"><b>' + esc(endLabel) + "</b> " + tr2 + "</div></div></li>";
+    }
+    return '<ol class="stops">' + out + "</ol>";
+  }
+  function qList(qs, empty) {
+    if (!qs.length) return '<p class="small muted">' + empty + "</p>";
+    return "<ul>" + qs.map(function (q) {
+      return "<li><b>" + esc(q.n) + "</b>" + (q.cls ? ' <span class="tag cls">' + esc(q.cls) + "</span>" : "") + ' <span class="muted">· ' + esc(q.start) + "</span>" + (q.note ? '<br><span class="small muted">' + esc(q.note) + "</span>" : "") + "</li>";
+    }).join("") + "</ul>";
+  }
+  var CAT = { pre_run_pickup: "Pick up first", inside_pickup: "Inside", followup: "Follow-up", optional: "Optional", attunement: "Attunement / key", "class": "Class" };
+
+  function render() {
+    renderStrip();
+    var d = current(), f = state.faction;
+    var L = P.levelInfo(d, f);
+    var plan = P.plan(H, d, { faction: f, players: state.players, start: state.start, includeOptional: state.opt });
+    var mine = d.quests.filter(function (q) { return P.forFaction(q, f); });
+    var live = mine.filter(P.isLive);
+    var html = "";
+
+    html += '<div class="dhead"><span class="eyebrow">' + esc(d.aka || "Dungeon") + " · level " + esc(d.range) + (d.isNew ? " · new in Forever" : "") + "</span>" +
+      "<h2>" + esc(d.name) + "</h2><p class=\"muted small\">" + esc(d.entranceNote || "") + "</p></div>";
+
+    html += '<div class="levels">' +
+      '<div class="lvl key"><span class="label">Do it all in one run from</span><span class="n">' + (L.firstRun.lvl || "–") + '</span><span class="t">Highest level needed to accept everything you can carry into your first run' + (L.firstRun.q ? " (" + esc(L.firstRun.q) + ")" : "") + ".</span></div>" +
+      '<div class="lvl"><span class="label">Whole quest set</span><span class="n">' + (L.full.lvl || "–") + '</span><span class="t">Including follow-ups and quests that need an earlier chain.</span></div>' +
+      (L.cls.lvl ? '<div class="lvl"><span class="label">Class quests</span><span class="n">' + L.cls.lvl + '</span><span class="t">' + esc(L.cls.q) + "</span></div>" : "") +
+      "</div>";
+
+    // summary
+    var who = state.players.length === 1 ? "solo" : state.players.length + " players";
+    var sum = '<div class="summary">';
+    if (!plan.tasks) {
+      sum += "<b>Nothing to pick up outside.</b><span>Head straight to " + esc(hubName(d.entrance)) + ": " + mins(plan.total) + " from " + esc(H[state.start].name) + ".</span>";
+    } else if (plan.mode === "split") {
+      sum += "<b>Split up: " + mins(plan.total) + " total</b><span>" + who + ". Staying together would take " + mins(plan.compare) + ".</span>";
+    } else {
+      sum += "<b>" + (state.players.length > 1 ? "Stay together: " : "") + mins(plan.total) + " total</b><span>" + who + (plan.compare != null && state.players.length > 1 ? ". Splitting up wouldn't save time here." : ".") + "</span>";
+    }
+    html += sum + "</div>";
+
+    if (plan.mode === "split") {
+      html += '<section><h3>Split up</h3><p class="small muted">Each person grabs their pickups, then heads to <b>' + esc(hubName(plan.meet)) + "</b>." + (state.players.some(function (p) { return p.cls === "mage"; }) ? " The mage opens a portal for each person before you split." : "") + '</p><div class="players">' +
+        plan.players.map(function (r) {
+          var cl = CLASSES.find(function (c) { return c[0] === r.player.cls; });
+          var body = r.visits.length ? stopsHtml(r.visits, "Meet at " + hubName(plan.meet), r.toMeet)
+            : '<p class="small muted">No pickups. Go to the meeting point.</p>' + stopsHtml([], "Meet at " + hubName(plan.meet), r.toMeet);
+          return '<div class="pcard"><h3>' + esc(r.player.name) + ' <span class="tag cls">' + esc(cl ? cl[1] : "") + "</span>" + (r.player.eng !== "none" ? '<span class="tag cls">' + esc(r.player.eng) + "</span>" : "") +
+            '</h3><span class="small muted">Arrives after ' + mins(r.arrive) + "</span>" + body + "</div>";
+        }).join("") + "</div>";
+      var byFrom = {};
+      plan.shares.forEach(function (s) { (byFrom[s.from] = byFrom[s.from] || []).push(s.q); });
+      html += '<div class="shares"><h3>When you meet, share these</h3><ul>' + Object.keys(byFrom).map(function (k) {
+        return "<li><b>" + esc(k) + "</b> shares " + byFrom[k].map(esc).join(", ") + "</li>";
+      }).join("") + '</ul><p class="small muted">Everyone needs to meet the quest level to accept a share.</p></div></section>';
+    }
+
+    if (plan.tasks) {
+      var gv = plan.group.visits;
+      var title = plan.mode === "split" ? "Then together" : (state.players.length > 1 ? "Route, all together" : "Route");
+      html += "<section><h3>" + title + "</h3>" +
+        (gv.length || plan.mode !== "split" ? stopsHtml(gv, "Enter " + d.short + " at " + hubName(d.entrance), plan.group.final) : '<p class="small muted">Nothing left to do together. Go in.</p>') + "</section>";
+    }
+
+    // reference lists
+    var inside = live.filter(function (q) { return q.cat === "inside_pickup"; });
+    var follow = live.filter(function (q) { return q.cat === "followup" || ((q.optRoute || (q.pre && !P.pathOf(q, f))) && q.cat !== "class" && q.cat !== "optional" && q.cat !== "inside_pickup"); });
+    var opts = live.filter(function (q) { return (q.cat === "optional" || q.cat === "class") && !(state.opt && P.routable(q, f, true, state.players.map(function (p) { return p.cls; }))); });
+    var dead = mine.filter(function (q) { return !P.isLive(q); });
+    html += '<div class="cols">' +
+      '<div class="box"><h3>Picked up inside</h3>' + qList(inside, "None.") + "</div>" +
+      '<div class="box"><h3>Follow-ups and earlier chains</h3>' + qList(follow, "None.") + "</div>" +
+      '<div class="box"><h3>' + (state.opt ? "Optional, not routed for this party" : "Optional (tick the box above to route them)") + "</h3>" + qList(opts, "None.") + "</div>" +
+      (dead.length ? '<div class="box"><h3>Not in Forever or unclear</h3>' + qList(dead, "") + "</div>" : "") +
+      "</div>";
+
+    // quest table
+    html += "<section><h3>Every quest (" + (f === "A" ? "Alliance" : "Horde") + ' view)</h3><div class="tbl"><table><thead><tr><th>Quest</th><th>Lvl</th><th>Starts at</th><th>Share</th><th>Type</th><th>Forever</th></tr></thead><tbody>' +
+      mine.slice().sort(function (a, b) { return (a.req || 0) - (b.req || 0); }).map(function (q) {
+        var share = q.share === true ? '<span class="tag ok">Yes</span>' : q.share === false ? '<span class="tag no">No</span>' : '<span class="tag no">?</span>';
+        var fv = !P.isLive(q) ? '<span class="tag no">' + (q.status === "unclear" ? "Unclear" : "Not in game") + "</span>" : q.ch === "new" ? '<span class="tag new">New</span>' : q.ch === "changed" ? '<span class="tag ch">Changed</span>' : "";
+        return '<tr class="' + (P.isLive(q) ? "" : "dead") + '"><td><b>' + esc(q.n) + "</b>" + (q.f !== "B" ? ' <span class="small muted">(' + (q.f === "A" ? "Alliance" : "Horde") + ")</span>" : "") + (q.note ? '<br><span class="small muted">' + esc(q.note) + "</span>" : "") + '</td><td class="num">' + (q.req || "–") + "</td><td>" + esc(q.start) + "</td><td>" + share + "</td><td>" + esc(CAT[q.cat] || q.cat) + (q.cls ? " · " + esc(q.cls) : "") + "</td><td>" + fv + "</td></tr>";
+      }).join("") + "</tbody></table></div></section>";
+
+    html += '<section><h3>Notes</h3><ul class="notes small">' + d.notes.map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + "</ul>" +
+      '<p class="small muted">Sources: ' + d.sources.map(function (u) { return '<a href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(u.replace(/^https?:\/\/(www\.)?/, "")) + "</a>"; }).join(" · ") + "</p></section>";
+
+    document.getElementById("view").innerHTML = html;
+  }
+
+  window.addEventListener("hashchange", render);
+  renderParty(); renderFaction(); render();
+})();
+</script>
