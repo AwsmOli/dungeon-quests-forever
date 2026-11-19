@@ -1,6 +1,6 @@
 const P = require('./engine.js');
-const D = require('./data.json');
-const H = D.hubs;
+const D = process.env.DATA ? JSON.parse(require('fs').readFileSync(process.env.DATA,'utf8')) : require('./data.json');
+const H = D.hubs; P.setBoats(D.boats || [{a:'SW',b:'AUBERDINE',f:'A',min:10},{a:'MENETHIL',b:'THERAMORE',f:'A',min:10},{a:'UC',b:'ORG',f:'H',min:10},{a:'GROMGOL',b:'ORG',f:'H',min:10}]); if (D.rules) P.setRules(D.rules);
 const only = process.argv[2];
 const M={name:'Mage',cls:'mage',eng:'none'}, O=(n)=>({name:'P'+n,cls:'warrior',eng:'none'}), W={name:'Lock',cls:'warlock',eng:'none'}, G={name:'Gob',cls:'rogue',eng:'goblin'}, Dr={name:'Druid',cls:'druid',eng:'none'};
 const f1 = (x)=>x.toFixed(1);

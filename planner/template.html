@@ -64,8 +64,11 @@ input[type="text"], select { font: 0.9rem var(--font-body); padding: 7px 9px; bo
 button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--ember); outline-offset: 1px; }
 
 /* dungeon strip */
-.strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
-.chip { flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 12px; cursor: pointer; color: var(--fg); min-width: 92px; }
+.strip { display: flex; flex-direction: column; gap: 12px; }
+.band { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; align-items: start; }
+.band > .label { padding-top: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { flex: 0 0 auto; width: 128px; display: flex; flex-direction: column; gap: 2px; text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 12px; cursor: pointer; color: var(--fg); min-width: 92px; }
 .chip b { font: 700 0.95rem var(--font-display); }
 .chip span { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .chip[aria-current="true"] { border-color: var(--fac); box-shadow: inset 0 0 0 1px var(--fac); }
@@ -178,6 +181,8 @@ a { color: var(--ember); overflow-wrap: anywhere; }
 (function () {
   var DATA = /*__DATA__*/;
   var H = DATA.hubs, P = window.Planner;
+  P.setBoats(DATA.boats || []);
+  if (DATA.rules) P.setRules(DATA.rules);
   var CLASSES = [["warrior","Warrior"],["paladin","Paladin"],["hunter","Hunter"],["rogue","Rogue"],["priest","Priest"],["shaman","Shaman"],["mage","Mage"],["warlock","Warlock"],["druid","Druid"]];
   var CITY = { A: [["SW","Stormwind"],["IF","Ironforge"],["DARN","Darnassus"]], H: [["ORG","Orgrimmar"],["UC","Undercity"],["TB","Thunder Bluff"]] };
   var KEY = "forever-planner-setup";
@@ -187,7 +192,7 @@ a { color: var(--ember); overflow-wrap: anywhere; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function mins(m) { return m < 1 ? "&lt;1 min" : "~" + Math.round(m) + " min"; }
   function hubName(id) { var h = H[id]; if (!h) return id; return h.name === h.zone ? h.name : h.name + ", " + h.zone; }
-  function current() { var id = (location.hash || "").slice(1); return DATA.dungeons.find(function (d) { return d.id === id; }) || DATA.dungeons[0]; }
+  function current() { var id = (location.hash || "").slice(1); return DATA.dungeons.find(function (d) { return d.id === id; }) || sortedDungeons()[0].d; }
 
   // ---------- setup UI ----------
   var party = document.getElementById("party");
@@ -235,13 +240,27 @@ a { color: var(--ember); overflow-wrap: anywhere; }
 
   // ---------- dungeon strip ----------
   var strip = document.getElementById("strip");
+  // Sorted by the level you need to accept every quest for one run (for the chosen faction).
+  function sortedDungeons() {
+    return DATA.dungeons.map(function (d) {
+      var min = parseInt(String(d.range).split("-")[0], 10) || 1;
+      var L = P.levelInfo(d, state.faction);
+      return { d: d, all: L.firstRun.lvl || min, min: min };
+    }).sort(function (a, b) { return a.all - b.all || a.min - b.min || a.d.name.localeCompare(b.d.name); });
+  }
+  var BANDS = [[0, 29, "Up to 29"], [30, 44, "30 to 44"], [45, 54, "45 to 54"], [55, 60, "55 to 60"]];
   function renderStrip() {
     var cur = current();
-    strip.innerHTML = DATA.dungeons.map(function (d) {
-      var L = P.levelInfo(d, state.faction);
-      return '<button type="button" class="chip" data-id="' + d.id + '"' + (d.id === cur.id ? ' aria-current="true"' : "") + ">" +
-        "<b>" + esc(d.short) + "</b><span>" + (L.firstRun.lvl ? "All quests at " + L.firstRun.lvl : "Lv " + esc(d.range)) + "</span>" +
-        (d.isNew ? '<span class="new">New in Forever</span>' : "<span>" + esc(d.range) + "</span>") + "</button>";
+    var list = sortedDungeons();
+    strip.innerHTML = BANDS.map(function (b) {
+      var inBand = list.filter(function (x) { return x.all >= b[0] && x.all <= b[1]; });
+      if (!inBand.length) return "";
+      return '<div class="band"><span class="label">' + b[2] + '</span><div class="chips">' + inBand.map(function (x) {
+        var d = x.d;
+        return '<button type="button" class="chip" data-id="' + d.id + '"' + (d.id === cur.id ? ' aria-current="true"' : "") + ' title="' + esc(d.name) + '">' +
+          "<b>" + esc(d.short) + "</b><span>All quests at " + x.all + "</span>" +
+          (d.isNew ? '<span class="new">New in Forever</span>' : "<span>Level " + esc(d.range) + "</span>") + "</button>";
+      }).join("") + "</div></div>";
     }).join("");
     strip.querySelectorAll(".chip").forEach(function (b) { b.addEventListener("click", function () { location.hash = b.dataset.id; }); });
   }
@@ -296,6 +315,13 @@ a { color: var(--ember); overflow-wrap: anywhere; }
 
     // summary
     var who = state.players.length === 1 ? "solo" : state.players.length + " players";
+    var lvl = P.plannedLevel(d, f), ab = P.abilitiesAt(lvl);
+    var hasCls = function (c) { return state.players.some(function (p) { return p.cls === c; }); };
+    var kit = [ab.mounted ? "mounted" : "no mount yet (running)"];
+    if (hasCls("mage")) kit.push(ab.portal ? (ab.portalFar ? "mage portals" : "mage portals (not Darnassus/Thunder Bluff yet)") : ab.teleport ? "mage teleports, no portals yet" : "no mage teleports yet");
+    if (hasCls("warlock") && state.players.length >= 3) kit.push(ab.summon ? "warlock summons" : "no summons yet");
+    if (hasCls("druid")) kit.push(ab.moonglade ? "Moonglade teleport" : "no Moonglade yet");
+    var kitLine = '<span class="small">Planned at level ' + lvl + ": " + kit.join(", ") + ".</span>";
     var sum = '<div class="summary">';
     if (!plan.tasks) {
       sum += "<b>Nothing to pick up outside.</b><span>Head straight to " + esc(hubName(d.entrance)) + ": " + mins(plan.total) + " from " + esc(H[state.start].name) + ".</span>";
@@ -304,10 +330,10 @@ a { color: var(--ember); overflow-wrap: anywhere; }
     } else {
       sum += "<b>" + (state.players.length > 1 ? "Stay together: " : "") + mins(plan.total) + " total</b><span>" + who + (plan.compare != null && state.players.length > 1 ? ". Splitting up wouldn't save time here." : ".") + "</span>";
     }
-    html += sum + "</div>";
+    html += sum + kitLine + "</div>";
 
     if (plan.mode === "split") {
-      html += '<section><h3>Split up</h3><p class="small muted">Each person grabs their pickups, then heads to <b>' + esc(hubName(plan.meet)) + "</b>." + (state.players.some(function (p) { return p.cls === "mage"; }) ? " The mage opens a portal for each person before you split." : "") + '</p><div class="players">' +
+      html += '<section><h3>Split up</h3><p class="small muted">Each person grabs their pickups, then heads to <b>' + esc(hubName(plan.meet)) + "</b>." + (hasCls("mage") && ab.portal ? " The mage opens a portal for each person before you split." : "") + '</p><div class="players">' +
         plan.players.map(function (r) {
           var cl = CLASSES.find(function (c) { return c[0] === r.player.cls; });
           var body = r.visits.length ? stopsHtml(r.visits, "Meet at " + hubName(plan.meet), r.toMeet)

@@ -8,7 +8,7 @@ import json, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
-from data import HUBS, DUNGEONS, ORDER
+from data import HUBS, DUNGEONS, ORDER, BOATS, RULES
 
 # Source links per dungeon (taken from the research notes).
 SOURCES = json.load(open(os.path.join(HERE, "sources.json"), encoding="utf-8"))
@@ -35,7 +35,11 @@ if errors:
     sys.exit(1)
 
 dmap = {d["id"]: d for d in DUNGEONS}
-out = {"hubs": HUBS, "dungeons": [dmap[i] for i in ORDER]}
+boats = [{"a": a, "b": b_, "f": f, "min": m} for a, b_, f, m in BOATS if a in HUBS and b_ in HUBS]
+for a, b_, f, m in BOATS:
+    if a not in HUBS or b_ not in HUBS:
+        print(f"note: boat {a}-{b_} skipped, unknown dock")
+out = {"hubs": HUBS, "boats": boats, "rules": RULES, "dungeons": [dmap[i] for i in ORDER]}
 json.dump(out, open(os.path.join(HERE, "data.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 
 tpl = open(os.path.join(HERE, "template.html"), encoding="utf-8").read()

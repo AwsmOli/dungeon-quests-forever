@@ -6,7 +6,9 @@ A route planner for WoW Forever dungeon quests. Pick your faction, your party (u
 
 ## What it covers
 
-Blackrock Depths and the 10 dungeons after it: Dire Maul (East, West, North), Lower and Upper Blackrock Spire, Stratholme (both gates), Scholomance, and the new Forever dungeons Blackmaw Hold and Shaper's Terrace.
+All 35 WoW Forever dungeons, from Ragefire Chasm and the Hall of Thanes up to Upper Blackrock Spire. That includes the 9 dungeons new in Forever: Hall of Thanes, Ruins of Lordaeron, Excavation Site: Wetlands, City of Dalaran, The Drowned City, Krol'dok Stronghold, Alcaz Prison, Blackmaw Hold and Shaper's Terrace. The dungeon list is sorted by the level you need to accept every quest for one run.
+
+The planner knows when travel abilities unlock. Mage teleports come at 20 (Darnassus and Thunder Bluff at 30) and portals at 40 (50). Riding is 40, Ritual of Summoning 20 and Teleport: Moonglade 10. Below 40 everyone runs, and the boat network includes Forever's Stormwind ↔ Auberdine and Steamwheedle Port ↔ Riverglades routes.
 
 For each dungeon you get:
 
@@ -17,7 +19,8 @@ For each dungeon you get:
 
 ## How it works
 
-- `planner/data.py`: quest data and the map model (places, positions, flight access)
+- `planner/data.py`: endgame quest data, the base map (places, positions, flight access) and boats
+- `planner/dungeons/*.py`: the other dungeon groups. `planner/dungeons/README.md` explains the format, and `python planner/check.py <file>` checks one file
 - `planner/engine.js`: the planner. It runs a greedy tour that respects quest chain order, and assigns shareable pickups to players by brute force
 - `planner/template.html`: the page
 - `planner/build.py`: combines these into `index.html`

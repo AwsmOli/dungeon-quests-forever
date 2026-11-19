@@ -2,37 +2,81 @@
 (function (root) {
   var FLY_SPEED = 6;      // map units per minute on a flight path
   var RIDE_SPEED = 2.6;   // map units per minute on a ground mount
+  var FOOT = 1.6;         // a mount is about 60% faster than running
   var FP_OVERHEAD = 1;    // flight master, landing
-  var CROSS = 10;         // boat or zeppelin wait plus crossing
   var CAST = 0.5;         // teleport / portal cast
   var SUMMON = 1.5;       // one Ritual of Summoning
   var ACT = 0.5;          // talking to an NPC
   var CITIES = { A: ["SW", "IF", "DARN"], H: ["ORG", "UC", "TB"] };
-  var PORT_PAIRS = { A: [["SW", "AUBERDINE"], ["MENETHIL", "THERAMORE"], ["MENETHIL", "AUBERDINE"]], H: [["UC", "ORG"], ["GROMGOL", "ORG"]] };
+  // Levels at which travel abilities unlock (Classic values unless data overrides them).
+  var RULES = {
+    teleport: { SW: 20, IF: 20, ORG: 20, UC: 20, DARN: 30, TB: 30 },
+    portal: { SW: 40, IF: 40, ORG: 40, UC: 40, DARN: 50, TB: 50 },
+    mount: 40, summon: 20, moonglade: 10
+  };
+  var BOATS = [];          // [{a, b, f: "A"|"H"|"both", min}]
+  var CTX = { level: 60, mounted: true };
+  var memo = {}, nets = {};
+
+  function setRules(r) { if (r) Object.keys(r).forEach(function (k) { RULES[k] = r[k]; }); memo = {}; nets = {}; }
+  function setBoats(b) { BOATS = b || []; memo = {}; nets = {}; }
+  function setLevel(lvl) {
+    CTX.level = lvl || 60; CTX.mounted = CTX.level >= RULES.mount;
+  }
+  function can(kind, city) { var t = RULES[kind]; return CTX.level >= (typeof t === "object" ? (t[city] || 99) : t); }
 
   function dist(a, b) { var dx = a.x - b.x, dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy); }
-  function rideOf(h, f) { var r = h.ride && h.ride[f]; return r == null ? 4 : r; }
+  function rideOf(h, f) { var r = h.ride && h.ride[f]; r = r == null ? 4 : r; return CTX.mounted ? r : r * FOOT; }
   function flySame(H, a, b, f) { return FP_OVERHEAD + rideOf(H[a], f) + dist(H[a], H[b]) / FLY_SPEED + rideOf(H[b], f); }
-  function rideSame(H, a, b) { return 0.3 + dist(H[a], H[b]) / RIDE_SPEED; }
+  function rideSame(H, a, b) { return 0.3 + dist(H[a], H[b]) / (CTX.mounted ? RIDE_SPEED : RIDE_SPEED / FOOT); }
+  function sameCont(H, a, b) {
+    if (a === b) return { min: 0, via: "Here" };
+    var fly = flySame(H, a, b, f0), ride = rideSame(H, a, b);
+    return ride <= fly ? { min: ride, via: CTX.mounted ? "Ride" : "Run" } : { min: fly, via: "Fly" };
+  }
+  var f0 = "A";
 
-  var memo = {};
+  // Shortest paths between boat/zeppelin docks for a faction (Floyd-Warshall on a handful of nodes).
+  function network(H, f) {
+    var key = f + (CTX.mounted ? "m" : "w");
+    if (nets[key]) return nets[key];
+    var nodes = [], edges = [];
+    BOATS.forEach(function (b) {
+      if (!(b.f === "both" || b.f === f) || !H[b.a] || !H[b.b]) return;
+      [b.a, b.b].forEach(function (n) { if (nodes.indexOf(n) < 0) nodes.push(n); });
+      edges.push(b);
+    });
+    var D = {};
+    nodes.forEach(function (i) { D[i] = {}; nodes.forEach(function (j) {
+      D[i][j] = i === j ? 0 : (H[i].cont === H[j].cont ? (f0 = f, sameCont(H, i, j).min) : Infinity);
+    }); });
+    edges.forEach(function (e) { D[e.a][e.b] = Math.min(D[e.a][e.b], e.min); if (!e.oneWay) D[e.b][e.a] = Math.min(D[e.b][e.a], e.min); });
+    nodes.forEach(function (k) { nodes.forEach(function (i) { nodes.forEach(function (j) {
+      if (D[i][k] + D[k][j] < D[i][j]) D[i][j] = D[i][k] + D[k][j];
+    }); }); });
+    nets[key] = { nodes: nodes, D: D };
+    return nets[key];
+  }
+
   function baseTravel(H, a, b, f) {
-    var key = a + ">" + b + ">" + f;
+    var key = a + ">" + b + ">" + f + (CTX.mounted ? "m" : "w");
     if (memo[key]) return memo[key];
     var r;
+    f0 = f;
     if (a === b) r = { min: 0, via: "Here" };
-    else if (H[a].cont === H[b].cont) {
-      var fly = flySame(H, a, b, f), ride = rideSame(H, a, b);
-      r = ride <= fly ? { min: ride, via: "Ride" } : { min: fly, via: "Fly" };
-    } else {
-      var best = null;
-      PORT_PAIRS[f].forEach(function (p) {
-        if (!H[p[0]] || !H[p[1]]) return;
-        var pa = H[a].cont === H[p[0]].cont ? p[0] : p[1], pb = pa === p[0] ? p[1] : p[0];
-        var t = (a === pa ? 0 : baseTravel(H, a, pa, f).min) + CROSS + (pb === b ? 0 : baseTravel(H, pb, b, f).min);
-        if (best == null || t < best) best = t;
+    else if (H[a].cont === H[b].cont) r = sameCont(H, a, b);
+    else {
+      var net = network(H, f), best = null;
+      f0 = f;
+      net.nodes.forEach(function (pa) {
+        if (H[pa].cont !== H[a].cont) return;
+        net.nodes.forEach(function (pb) {
+          if (H[pb].cont !== H[b].cont || net.D[pa][pb] === Infinity) return;
+          var t = sameCont(H, a, pa).min + net.D[pa][pb] + sameCont(H, pb, b).min;
+          if (best == null || t < best) best = t;
+        });
       });
-      r = { min: best == null ? 30 : best, via: f === "H" ? "Fly + zeppelin" : "Fly + boat" };
+      r = { min: best == null ? 40 : best, via: f === "H" ? "Travel + zeppelin/boat" : "Travel + boat" };
     }
     memo[key] = r;
     return r;
@@ -45,12 +89,13 @@
     CITIES[f].forEach(function (c) {
       if (!H[c]) return;
       var leg = c === to ? 0 : baseTravel(H, c, to, f).min;
-      if (abil.mage) opts.push({ min: CAST + leg, via: "Teleport: " + H[c].name });
-      else if (abil.portalFromMage) opts.push({ min: CAST + leg, via: "Mage portal: " + H[c].name });
+      if (abil.portalAll && abil.portalFromMage && can("portal", c)) { opts.push({ min: CAST + leg, via: "Mage portal: " + H[c].name }); return; }
+      if (abil.mage && can("teleport", c)) opts.push({ min: CAST + leg, via: "Teleport: " + H[c].name });
+      else if (abil.portalFromMage && can("portal", c)) opts.push({ min: CAST + leg, via: "Mage portal: " + H[c].name });
     });
     if (abil.gnomish && H.GADGETZAN) opts.push({ min: 1 + (to === "GADGETZAN" ? 0 : baseTravel(H, "GADGETZAN", to, f).min), via: "Ultrasafe Transporter: Gadgetzan" });
     if (abil.goblin && H.EVERLOOK) opts.push({ min: 1 + (to === "EVERLOOK" ? 0 : baseTravel(H, "EVERLOOK", to, f).min), via: "Dimensional Ripper: Everlook" });
-    if (abil.druid && H.MOONGLADE) opts.push({ min: CAST + (to === "MOONGLADE" ? 0 : baseTravel(H, "MOONGLADE", to, f).min), via: "Teleport: Moonglade" });
+    if (abil.druid && H.MOONGLADE && can("moonglade")) opts.push({ min: CAST + (to === "MOONGLADE" ? 0 : baseTravel(H, "MOONGLADE", to, f).min), via: "Teleport: Moonglade" });
     (extra || []).forEach(function (o) { opts.push(o); });
     opts.sort(function (x, y) { return x.min - y.min; });
     return opts[0];
@@ -86,6 +131,17 @@
       cls: mx(function (q) { return q.cat === "class"; }),
       optional: mx(function (q) { return q.cat === "optional"; })
     };
+  }
+
+  // The level a party would do this dungeon at: when everything can be picked up, or the dungeon's minimum.
+  function plannedLevel(d, f) {
+    var L = levelInfo(d, f), min = parseInt(String(d.range).split("-")[0], 10) || 1;
+    return Math.max(L.firstRun.lvl || 0, min);
+  }
+  function abilitiesAt(lvl) {
+    setLevel(lvl);
+    return { mounted: CTX.mounted, teleport: can("teleport", "SW"), teleportFar: can("teleport", "DARN"),
+      portal: can("portal", "SW"), portalFar: can("portal", "DARN"), summon: can("summon"), moonglade: can("moonglade") };
   }
 
   // Build task list: one task per routable quest; `after` turns into indexes.
@@ -166,12 +222,14 @@
   // players: [{name, cls: 'mage'|'warlock'|'druid'|'other', eng: 'none'|'gnomish'|'goblin'}]
   function plan(H, d, opt) {
     var f = opt.faction, players = opt.players, start = opt.start, N = players.length;
+    setLevel(opt.level || plannedLevel(d, f));
     var classes = players.map(function (p) { return p.cls; });
     var tasks = buildTasks(d, f, opt.includeOptional, classes);
     var anyMage = players.some(function (p) { return p.cls === "mage"; });
     var warlockIdx = -1;
     players.forEach(function (p, i) { if (warlockIdx < 0 && p.cls === "warlock") warlockIdx = i; });
-    var groupAbil = { mage: anyMage };
+    // A mage can only bring the group along once portals unlock; otherwise the group travels normally.
+    var groupAbil = { portalFromMage: anyMage, portalAll: true };
     if (N === 1) {
       var p0 = players[0];
       groupAbil = { mage: p0.cls === "mage", druid: p0.cls === "druid", gnomish: p0.eng === "gnomish", goblin: p0.eng === "goblin" };
@@ -235,7 +293,7 @@
         var tr = tour(H, f, start, list, function (n) { return abilOf(p, n === 0); }, meet);
         return { player: p, pi: pi, visits: tr.visits, toMeet: tr.final, arrive: tr.time };
       });
-      if (warlockIdx >= 0 && N >= 3) {
+      if (warlockIdx >= 0 && N >= 3 && can("summon")) {
         var tw = res[warlockIdx].arrive;
         var others = res.filter(function (r) { return r.pi !== warlockIdx; });
         var sorted = others.map(function (r) { return r.arrive; }).sort(function (a, b) { return a - b; });
@@ -281,6 +339,6 @@
     function finish(res, other) { res.compare = other; res.tasks = tasks.length; return res; }
   }
 
-  var api = { plan: plan, levelInfo: levelInfo, travel: travel, baseTravel: baseTravel, isLive: isLive, forFaction: forFaction, isOptional: isOptional, pathOf: pathOf, routable: routable, CITIES: CITIES };
+  var api = { setRules: setRules, setBoats: setBoats, plannedLevel: plannedLevel, abilitiesAt: abilitiesAt, RULES: RULES, plan: plan, levelInfo: levelInfo, travel: travel, baseTravel: baseTravel, isLive: isLive, forFaction: forFaction, isOptional: isOptional, pathOf: pathOf, routable: routable, CITIES: CITIES };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.Planner = api;
 })(this);

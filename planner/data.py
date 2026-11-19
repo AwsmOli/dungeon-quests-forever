@@ -1,10 +1,9 @@
 """Quest data for the Forever dungeon planner. Built from Forever trackers (foreverchanges.pro build 1.60.1.70959,
 conquestcapped, zockify, warcrafttavern, wowforeverguides) with Classic fill-ins where noted."""
 
-# ---------- hubs: continent-map positions (0-100), ride = minutes from usable flight point ----------
-def hub(name, zone, cont, x, y, a=0, h=0):
-    return {"name": name, "zone": zone, "cont": cont, "x": x, "y": y, "ride": {"A": a, "H": h}}
+from qlib import hub, Q, S, UNCLEAR_T05
 
+# ---------- hubs: continent-map positions (0-100), ride = minutes from usable flight point ----------
 HUBS = {
     # capitals
     "SW": hub("Stormwind", "Stormwind City", "EK", 42, 78, 0, None),
@@ -61,29 +60,6 @@ HUBS = {
     "SHAPERS": hub("Shaper's Terrace", "Un'Goro Crater", "K", 52, 79, 1, 1),
 }
 
-
-def Q(n, f, req, cat, share, start, path=None, **kw):
-    d = {"n": n, "f": f, "req": req, "cat": cat, "share": share, "start": start}
-    if path is not None:
-        if isinstance(path, dict):
-            d["path"] = {k: [S(*s) for s in v] for k, v in path.items()}
-        else:
-            d["path"] = [S(*s) for s in path]
-    for k, v in kw.items():
-        if v is not None:
-            d[k] = v
-    return d
-
-
-def S(hub_id, a, t="", work=0, hearth=False):
-    s = {"hub": hub_id, "a": a}
-    if t: s["t"] = t
-    if work: s["work"] = work
-    if hearth: s["opts"] = [{"via": "Hearth", "min": 1}]
-    return s
-
-
-UNCLEAR_T05 = "Tier 0.5 (Dungeon Set 2). Listed in Forever data but not confirmed live."
 
 DUNGEONS = []
 
@@ -539,4 +515,42 @@ DUNGEONS.append({
     ],
 })
 
-ORDER = ["brd", "dme", "lbrs", "bmh", "dmw", "dmn", "sht", "stratl", "stratu", "scholo", "ubrs"]
+# ---------- boats and zeppelins: (dock, dock, faction "A"/"H"/"both", minutes incl. waiting) ----------
+BOATS = [
+    ("SW", "AUBERDINE", "A", 10),         # new in Forever
+    ("MENETHIL", "AUBERDINE", "A", 10),
+    ("MENETHIL", "THERAMORE", "A", 10),
+    ("UC", "ORG", "H", 10),
+    ("GROMGOL", "ORG", "H", 10),
+    ("UC", "GROMGOL", "H", 10),
+    ("AUBERDINE", "DARN", "A", 7),         # Rut'theran Village, then the portal up
+    ("RATCHET", "BOOTYBAY", "both", 10),   # hubs come from the group files
+]
+
+# Levels at which travel abilities unlock. Forever keeps Classic's values (warcraft.wiki.gg "Mage abilities (Forever)",
+# warcrafttavern Forever riding guide): teleports 20 (Darnassus/Thunder Bluff 30), portals 40 (50), riding 40,
+# Ritual of Summoning 20, Teleport: Moonglade 10. These are the engine defaults, so nothing to override.
+# Not modelled: Teleport: Dalaran (reported for Alliance mages at 50, unconfirmed).
+RULES = None
+
+# ---------- load the other dungeon groups from planner/dungeons/*.py ----------
+import glob as _glob, importlib.util as _ilu, os as _os
+
+HUB_CLASHES = []
+_here = _os.path.dirname(_os.path.abspath(__file__))
+for _fn in sorted(_glob.glob(_os.path.join(_here, "dungeons", "*.py"))):
+    _spec = _ilu.spec_from_file_location("dungeons_" + _os.path.basename(_fn)[:-3], _fn)
+    _mod = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    for _k, _v in getattr(_mod, "HUBS", {}).items():
+        if _k in HUBS and HUBS[_k] != _v:
+            _o = HUBS[_k]
+            _far = _o["cont"] != _v["cont"] or abs(_o["x"] - _v["x"]) + abs(_o["y"] - _v["y"]) > 8
+            HUB_CLASHES.append((_k, _os.path.basename(_fn), _far, _o, _v))
+            continue   # first definition wins
+        HUBS[_k] = _v
+    DUNGEONS.extend(getattr(_mod, "DUNGEONS", []))
+    BOATS.extend(getattr(_mod, "BOATS", []))
+
+# Default order: by the dungeon's minimum level (the page re-sorts by "all quests" level per faction).
+ORDER = [d["id"] for d in sorted(DUNGEONS, key=lambda d: (int(d["range"].split("-")[0]), d["id"]))]

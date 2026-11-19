@@ -11,9 +11,11 @@ global.document={body:el('body'),getElementById(id){return els[id]||(els[id]=el(
 new Function(scripts[0]).call(global);
 // expose render via re-running main script per state
 const main=scripts[1];
+const DATA_IDS=[...main.matchAll(/"id":"([a-z0-9_]+)","name"/g)].map(m=>m[1]);
+console.log('dungeons:',DATA_IDS.length);
 let errs=0;
 for (const fac of ['A','H']) for (const opt of [false,true]) {
-  for (const d of ['brd','dme','lbrs','bmh','dmw','dmn','sht','stratl','stratu','scholo','ubrs']) {
+  for (const d of DATA_IDS) {
     location.hash='#'+d;
     global.localStorage={getItem(){return JSON.stringify({faction:fac,start:fac==='A'?'SW':'ORG',opt,players:[{name:'Ana',cls:'mage',eng:'none'},{name:'Bo',cls:'warlock',eng:'goblin'},{name:'Cy',cls:'paladin',eng:'none'},{name:'Di',cls:'shaman',eng:'gnomish'}]})},setItem(){}};
     try{ new Function(main).call(global); const v=els.view.innerHTML; if(!v.includes('<h2>')) throw new Error('no h2'); if(/undefined|NaN/.test(v.replace(/data-[a-z]+="[^"]*"/g,''))) {console.log('suspicious text in',d,fac,opt, (v.match(/.{40}(undefined|NaN).{40}/)||[''])[0]); errs++;} }
