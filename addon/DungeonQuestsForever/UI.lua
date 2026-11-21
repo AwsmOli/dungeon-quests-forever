@@ -18,6 +18,8 @@ local VERSION = (GetMeta and GetMeta(ADDON or "DungeonQuestsForever", "Version")
 local frame, side, listView, guideView
 local view = "list"
 local collapsed, search, sortKey = {}, "", "all"
+-- Stops the player opened or closed by hand. Finished stops fold up unless opened here.
+local stopFold = {}
 
 local BANDS = { { 1, 19, "Levels 10 - 19" }, { 20, 29, "Levels 20 - 29" }, { 30, 39, "Levels 30 - 39" },
   { 40, 49, "Levels 40 - 49" }, { 50, 60, "Levels 50 - 60" } }
@@ -327,6 +329,10 @@ function UI.SetSearch(text) search = (text or ""):lower(); UI.Render() end
 function UI.SetSort(key) sortKey = key; UI.Render() end
 function UI.ToggleBand(i) collapsed[i] = not collapsed[i]; UI.Render() end
 function UI.VisibleRows() return listView and listView.rows.used or 0 end
+-- Test hooks for the guide: the header frame of stop n, and how many step lines show.
+function UI.GuideHeader(n) return guideView and guideView.heads.items[n] end
+function UI.GuideLines() return guideView and guideView.lines.used or 0 end
+function UI.GuideLine(i) return guideView and guideView.lines.items[i] end
 
 local groupOffsets = {}
 function UI.JumpTo(i)
@@ -443,7 +449,9 @@ function UI.MakeGuide(parent)
     g.num = FS(g, 15, "CENTER"); g.num:SetPoint("LEFT", 6, 0); g.num:SetWidth(26)
     g.icon = g:CreateTexture(nil, "ARTWORK"); g.icon:SetSize(16, 16); g.icon:SetPoint("LEFT", 36, 0)
     g.text = FS(g, 14); g.text:SetPoint("LEFT", 58, 0); g.text:SetPoint("RIGHT", -170, 0)
-    g.right = FS(g, 11, "RIGHT"); g.right:SetPoint("RIGHT", -12, 0)
+    g.chev = FS(g, 13, "CENTER"); g.chev:SetPoint("RIGHT", -10, 0); g.chev:SetWidth(14)
+    g.right = FS(g, 11, "RIGHT"); g.right:SetPoint("RIGHT", -30, 0)
+    local hl = g:CreateTexture(nil, "HIGHLIGHT"); hl:SetAllPoints(); hl:SetColorTexture(1, 1, 1, 0.04)
     return g
   end)
   v.lines = Pool(v.content, function(p)
@@ -507,7 +515,13 @@ local function RenderGuide()
     hdr.right:SetText(T.GREY .. ((s.via ~= "" and s.via ~= "Here") and (s.via .. "  " .. Minutes(s.min)) or "") .. "|r")
     if s.current then hdr.bg:SetColorTexture(0.20, 0.15, 0.07, 0.95) else hdr.bg:SetColorTexture(T.PANEL[1], T.PANEL[2], T.PANEL[3], T.PANEL[4]) end
     y = y + 36
-    if not s.done then
+    local foldKey = d.id .. ":" .. s.n .. ":" .. tostring(s.hub)
+    local open = not s.done
+    if stopFold[foldKey] ~= nil then open = stopFold[foldKey] end
+    hdr.chev:SetText(T.GOLD_DIM .. (open and "v" or ">") .. "|r")
+    hdr:SetScript("OnClick", function() stopFold[foldKey] = not open; UI.Render() end)
+    Tip(hdr, { s.title, T.GREY .. (open and "Click to fold this stop." or "Click to open this stop, for example to untick a line.") .. "|r" })
+    if open then
       local firstOpen = true
       for _, a in ipairs(s.acts) do
         local r = v.lines:Get()
@@ -523,7 +537,11 @@ local function RenderGuide()
         if a.key ~= "enter" then
           r:SetScript("OnClick", function() ns.Guide.Toggle(a.key) end)
           local q = a.quest
-          Tip(r, { a.q, q and q.start, q and q.note, T.GREY .. "Click to tick this off by hand.|r" })
+          local hint
+          if a.manual then hint = "Ticked by hand. Click to untick."
+          elseif a.auto then hint = "Ticked from your quest log."
+          else hint = "Click to tick this off by hand." end
+          Tip(r, { a.q, q and q.start, q and q.note, T.GREY .. hint .. "|r" })
         else
           r:SetScript("OnClick", nil); Tip(r, { "Go in", d.entranceNote })
         end

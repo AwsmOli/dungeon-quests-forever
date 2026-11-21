@@ -58,13 +58,16 @@ function Guide.Evaluate(g)
     local allDone = true
     for ai, a in ipairs(s.acts) do
       local q = QuestFor(d, a.q, g.faction)
-      local done = g.manual[si .. "." .. ai] or false
-      if not done and q then
+      local manual = g.manual[si .. "." .. ai] and true or false
+      local auto = false
+      if q then
         local steps = ns.Engine.PathOf(q, g.faction) or {}
         local status = ns.State.Status(q, me.level)
-        done = ns.State.FirstStep(status, steps) > a.k
+        auto = ns.State.FirstStep(status, steps) > a.k
       end
-      stop.acts[ai] = { q = a.q, quest = q, a = a.a, t = a.t, k = a.k, done = done, key = si .. "." .. ai }
+      local done = manual or auto
+      stop.acts[ai] = { q = a.q, quest = q, a = a.a, t = a.t, k = a.k, done = done, manual = manual, auto = auto,
+        key = si .. "." .. ai }
       total = total + 1
       if done then doneCount = doneCount + 1 else allDone = false end
     end

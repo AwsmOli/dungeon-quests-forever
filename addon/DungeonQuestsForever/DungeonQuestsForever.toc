@@ -2,7 +2,7 @@
 ## Title: Dungeon Quests
 ## Notes: Plans the fastest pickup route for WoW Forever dungeon quests, for your level, class and party, with map pins and a waypoint to the next stop.
 ## Author: AwsmOli
-## Version: 0.3.0
+## Version: 0.3.1
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
 ## OptionalDeps: QuestieDB, Questie, ForeverMaps, TomTom
 ## SavedVariables: DungeonQuestsForeverDB

@@ -63,6 +63,30 @@ local d1 = ns.guideState.doneCount
 ns.Guide.Toggle(key)
 check(d1 == 4 and ns.guideState.doneCount == 3, "manual tick toggles")
 
+-- Tick a whole stop by hand: it folds up, but its header opens it again so a line can be unticked.
+local function click(f) local sc = rawget(f, "scripts"); sc.OnClick(f, "LeftButton") end
+local si
+for i, s in ipairs(ns.guideState.stops) do if not s.done and not s.final and not si then si = i end end
+for _, a in ipairs(ns.guideState.stops[si].acts) do if not a.done then ns.Guide.Toggle(a.key) end end
+check(ns.guideState.stops[si].done, "stop ticked by hand is done")
+ns.UI.Show(); ns.UI.ShowGuide()
+local linesFolded = ns.UI.GuideLines()
+click(ns.UI.GuideHeader(si))
+check(ns.UI.GuideLines() == linesFolded + #ns.guideState.stops[si].acts, "header opens a finished stop")
+-- The opened stop's lines come right after the lines of the open stops before it.
+local before = 0
+for i = 1, si - 1 do
+  local s = ns.guideState.stops[i]
+  if not s.done then before = before + #s.acts end
+end
+local mj
+for j, a in ipairs(ns.guideState.stops[si].acts) do if a.manual and not a.auto and not mj then mj = j end end
+local manualKey = ns.guideState.stops[si].acts[mj].key
+click(ns.UI.GuideLine(before + mj))
+check(not ns.guideState.stops[si].done, "unticking a line reopens the stop")
+check(not ns.guideState.stops[si].acts[mj].manual, "manual tick removed for " .. manualKey)
+for _, a in ipairs(ns.guideState.stops[si].acts) do if a.manual then ns.Guide.Toggle(a.key) end end
+
 -- Pins only for stops still open; the waypoint follows the current one.
 local open = 0
 for _, s in ipairs(ns.guideState.stops) do if not s.done then open = open + 1 end end
