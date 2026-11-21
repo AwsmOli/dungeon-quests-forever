@@ -17,6 +17,12 @@ For each dungeon you get:
 - For bigger groups, a split plan: one route per player, a meeting point, and a list of who shares what
 - Quests picked up inside, follow-ups, optional and class quests, and quests that aren't in Forever or whose status is unclear
 
+## In-game addon
+
+`addon/DungeonQuestsForever` is a WoW Forever addon built from the same data. It knows your level, quest log and party, ticks steps off as you go, and puts the route on your world map and minimap.
+
+**[Download DungeonQuestsForever.zip](https://github.com/AwsmOli/dungeon-quests-forever/releases/latest/download/DungeonQuestsForever.zip)**, unzip it, and put the folder in `World of Warcraft\_forever_\Interface\AddOns\`. More in [addon/README.md](addon/README.md).
+
 ## How it works
 
 - `planner/data.py`: endgame quest data, the base map (places, positions, flight access) and boats

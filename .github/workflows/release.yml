@@ -1,0 +1,54 @@
+name: Release addon
+
+# Push a tag like v0.3.0 (matching "## Version" in the addon's TOC) to publish a release with the zip.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Rebuild data (website and addon)
+        run: python planner/build.py
+
+      - name: Tag must match the TOC version
+        run: |
+          toc="v$(python tools/package_addon.py --version)"
+          if [ "$toc" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match the TOC version $toc"; exit 1
+          fi
+
+      - name: Run addon tests (LuaJIT = Lua 5.1, like WoW)
+        run: |
+          sudo apt-get install -y luajit > /dev/null
+          luajit addon/tests/run.lua
+          luajit addon/tests/parity.lua > lua.txt
+          node addon/tests/parity.js > js.txt
+          diff lua.txt js.txt
+
+      - name: Package
+        run: python tools/package_addon.py
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<EOF
+          **Install:** download \`DungeonQuestsForever.zip\`, unzip it, and put the \`DungeonQuestsForever\` folder in
+          \`World of Warcraft\\_forever_\\Interface\\AddOns\\\`. Then restart the game.
+
+          Works best with Questie/QuestieDB installed (quest IDs and exact NPC spots on the map).
+          Planner website: https://awsmoli.github.io/dungeon-quests-forever/
+          EOF
+          gh release create "$GITHUB_REF_NAME" dist/DungeonQuestsForever.zip \
+            --title "Dungeon Quests $GITHUB_REF_NAME" --notes-file notes.md
